@@ -37,6 +37,7 @@ class ThreadPoolDeviceFactory : public DeviceFactory {
 
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
                        std::vector<std::unique_ptr<Device>>* devices) override {
+    std::cerr << "some change" << std::endl;
     int num_numa_nodes = port::NUMANumNodes();
     int n = 1;
     auto iter = options.config.device_count().find("CPU");
