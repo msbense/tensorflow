@@ -48,6 +48,7 @@ TEST(Numa, SetNodeAffinity) {
   // nodes.  Not sure what to do about that.
   EXPECT_EQ(-1, port::NUMAGetThreadNodeAffinity());
   if (port::NUMAEnabled()) {
+    
     int num_nodes = port::NUMANumNodes();
     for (int request_node = 0; request_node < num_nodes; ++request_node) {
       port::NUMASetThreadNodeAffinity(request_node);
