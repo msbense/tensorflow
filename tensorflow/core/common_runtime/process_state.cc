@@ -60,6 +60,7 @@ ProcessState::MemDesc ProcessState::PtrType(const void* ptr) {
 }
 
 Allocator* ProcessState::GetCPUAllocator(int numa_node) {
+  // EnableNUMA();
   if (!numa_enabled_ || numa_node == port::kNUMANoAffinity) numa_node = 0;
   mutex_lock lock(mu_);
   while (cpu_allocators_.size() <= static_cast<size_t>(numa_node)) {
@@ -75,12 +76,13 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
       LOG(ERROR) << "GetCPUAllocator: " << status.error_message();
     }
     Allocator* allocator = nullptr;
-    SubAllocator* sub_allocator =
-        (numa_enabled_ || alloc_visitors_defined || use_bfc_allocator)
+    SubAllocator* sub_allocator = new NumaAllocator(cpu_alloc_visitors_, cpu_free_visitors_);
+        //= new BasicCPUAllocator(port::kNUMANoAffinity, cpu_alloc_visitors_, cpu_free_visitors_);
+        /*(numa_enabled_ || alloc_visitors_defined || use_bfc_allocator)
             ? new BasicCPUAllocator(
                   numa_enabled_ ? numa_node : port::kNUMANoAffinity,
                   cpu_alloc_visitors_, cpu_free_visitors_)
-            : nullptr;
+            : nullptr; */
     if (use_bfc_allocator) {
       // TODO(reedwm): evaluate whether 64GB by default is the best choice.
       int64 cpu_mem_limit_in_mb = -1;

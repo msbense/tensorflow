@@ -37,7 +37,6 @@ class ThreadPoolDeviceFactory : public DeviceFactory {
 
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
                        std::vector<std::unique_ptr<Device>>* devices) override {
-    std::cerr << "some change" << std::endl;
     int num_numa_nodes = port::NUMANumNodes();
     int n = 1;
     auto iter = options.config.device_count().find("CPU");
@@ -48,6 +47,7 @@ class ThreadPoolDeviceFactory : public DeviceFactory {
       string name = strings::StrCat(name_prefix, "/device:CPU:", i);
       std::unique_ptr<ThreadPoolDevice> tpd;
       if (options.config.experimental().use_numa_affinity()) {
+      // if (true) {
         int numa_node = i % num_numa_nodes;
         if (numa_node != i) {
           LOG(INFO) << "Only " << num_numa_nodes

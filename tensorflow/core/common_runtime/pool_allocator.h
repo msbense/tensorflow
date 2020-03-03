@@ -164,5 +164,31 @@ class BasicCPUAllocator : public SubAllocator {
   TF_DISALLOW_COPY_AND_ASSIGN(BasicCPUAllocator);
 };
 
+/* 
+  For bypassing the NUMA logic currently in the codebase. 
+  Acts like BasicCPUAllocator, except memory is allocated
+  to different NUMA nodes according to some policy.
+*/
+class NumaAllocator : public SubAllocator {
+  public:
+    NumaAllocator(const std::vector<Visitor>& alloc_visitors, 
+                  const std::vector<Visitor>& free_visitors)
+          : SubAllocator(alloc_visitors, free_visitors) {}
+    
+    ~NumaAllocator() override {}
+
+    void *Alloc(size_t alignment, size_t num_bytes) override;
+
+    void Free(void *ptr, size_t num_bytes) override;
+
+    private:
+
+    //Determine the best node to allocate to, given current process 
+    //state
+    int BestNode(size_t num_bytes);
+
+    TF_DISALLOW_COPY_AND_ASSIGN(NumaAllocator);
+};
+
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_POOL_ALLOCATOR_H_

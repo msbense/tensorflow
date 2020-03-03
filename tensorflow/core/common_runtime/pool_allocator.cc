@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 
 #include <errno.h>
+
 #ifndef _MSC_VER
 #include <strings.h>
 #include <sys/mman.h>  // for munmap
@@ -280,4 +281,31 @@ void BasicCPUAllocator::Free(void* ptr, size_t num_bytes) {
     }
   }
 }
+
+void *NumaAllocator::Alloc(size_t alignment, size_t num_bytes) {
+  void* ptr = nullptr;
+  if (num_bytes > 0) {
+    int node = NumaAllocator::BestNode(num_bytes);
+    ptr = port::NUMAMalloc(node, num_bytes, static_cast<int>(alignment));
+    VisitAlloc(ptr, node, num_bytes);
+  }
+  return ptr;
+}
+
+void NumaAllocator::Free(void* ptr, size_t num_bytes) {
+  if (num_bytes > 0) {
+    VisitFree(ptr, port::NUMAGetMemAffinity(ptr), num_bytes);
+    port::NUMAFree(ptr, num_bytes);
+  }
+}
+
+int NumaAllocator::BestNode(size_t num_bytes) {
+  //default to current thread's numa node
+  int node = port::NUMAGetThreadNodeAffinity();
+  
+  
+
+  return node;
+}
+
 }  // namespace tensorflow
