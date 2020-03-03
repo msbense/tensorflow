@@ -82,8 +82,10 @@ class CPUAllocator : public Allocator {
                    << 100 * kLargeAllocationWarningThreshold
                    << "% of free system memory.";
     }
-
+    
+    // void *p = port::NUMAMalloc(0, num_bytes, alignment);
     void* p = port::AlignedMalloc(num_bytes, alignment);
+    // std::cerr << "allocated at " << port::NUMAGetMemAffinity(p) << std::endl;
     if (cpu_allocator_collect_stats) {
       const std::size_t alloc_size = port::MallocExtension_GetAllocatedSize(p);
       mutex_lock l(mu_);
@@ -112,6 +114,7 @@ class CPUAllocator : public Allocator {
       mutex_lock l(mu_);
       stats_.bytes_in_use -= alloc_size;
     }
+    // port::NUMAFree(ptr, ((size_t *)ptr)[-1]);
     port::AlignedFree(ptr);
   }
 
