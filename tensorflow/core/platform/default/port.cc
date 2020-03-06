@@ -188,7 +188,7 @@ void NUMASetThreadNodeAffinity(int node) {
     // Find the corresponding NUMA node topology object.
     hwloc_obj_t obj = GetHWLocTypeIndex(HWLOC_OBJ_NUMANODE, node);
     if (obj) {
-      hwloc_set_cpubind(hwloc_topology_handle, obj->cpuset,
+      int ret = hwloc_set_cpubind(hwloc_topology_handle, obj->cpuset,
                         HWLOC_CPUBIND_THREAD | HWLOC_CPUBIND_STRICT);
     } else {
       LOG(ERROR) << "Could not find hwloc NUMA node " << node;
@@ -209,6 +209,7 @@ int NUMAGetThreadNodeAffinity() {
     // that of the current thread.
     while ((obj = hwloc_get_next_obj_by_type(
                 hwloc_topology_handle, HWLOC_OBJ_NUMANODE, obj)) != nullptr) {
+      
       if (hwloc_bitmap_isincluded(thread_cpuset, obj->cpuset)) {
         node_index = obj->os_index;
         break;

@@ -1,0 +1,32 @@
+int node = 0;
+// don't set thread affinity
+total images/sec: 62.11
+
+node = 0;
+port::NUMASetThreadNodeAffinity(0);
+total images/sec: 61.44
+
+node = 1;
+port::NUMASetThreadNodeAffinity(0);
+total images/sec: 60.35
+
+node = port::NUMAGetThreadNodeAffinity();   
+total images/sec: 72.03
+    Notes: port::NUMAGetThreadNodeAffinity() returned -1 for all calls, so NUMAMalloc defaulted to AlignedMalloc
+
+int node = -1;
+port::NUMASetThreadNodeAffinity(0);
+total images/sec: 71.53
+
+int node = node_; //randomly alternate between 1 and 0
+//don't set thread affinity
+total images/sec: 63.54
+
+int node = (bytes_on_node[0] < bytes_on_node[1]) ? 0 : 1;
+total images/sec: 65.30
+total images/sec: 63.01 //ran again
+
+int node = (bytes_on_node[0] < bytes_on_node[1]) ? 0 : 1;
+port::NUMASetThreadNodeAffinity(node);
+total images/sec: 64.82
+total images/sec: 67.19 //ran again    

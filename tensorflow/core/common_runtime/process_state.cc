@@ -77,7 +77,8 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
     }
     Allocator* allocator = nullptr;
     SubAllocator* sub_allocator = new NumaAllocator(cpu_alloc_visitors_, cpu_free_visitors_);
-        //= new BasicCPUAllocator(port::kNUMANoAffinity, cpu_alloc_visitors_, cpu_free_visitors_);
+    // SubAllocator* sub_allocator = new BasicCPUAllocator(port::kNUMANoAffinity, cpu_alloc_visitors_, cpu_free_visitors_);
+        // = new BasicCPUAllocator(port::kNUMANoAffinity, cpu_alloc_visitors_, cpu_free_visitors_);
         /*(numa_enabled_ || alloc_visitors_defined || use_bfc_allocator)
             ? new BasicCPUAllocator(
                   numa_enabled_ ? numa_node : port::kNUMANoAffinity,

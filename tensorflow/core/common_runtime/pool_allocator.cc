@@ -24,6 +24,7 @@ limitations under the License.
 
 #include <map>
 #include <utility>
+#include <iostream>
 
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
@@ -283,18 +284,25 @@ void BasicCPUAllocator::Free(void* ptr, size_t num_bytes) {
 }
 
 void *NumaAllocator::Alloc(size_t alignment, size_t num_bytes) {
-  void* ptr = nullptr;
+  void* ptr = nullptr; 
   if (num_bytes > 0) {
-    int node = NumaAllocator::BestNode(num_bytes);
+    int node = (bytes_on_node[0] < bytes_on_node[1]) ? 0 : 1;
+    // port::NUMASetThreadNodeAffinity(node);
     ptr = port::NUMAMalloc(node, num_bytes, static_cast<int>(alignment));
+    bytes_on_node[node] += num_bytes; 
+    std::cerr << "bytes_on_node[0]: " << bytes_on_node[0] << std::endl;
+    std::cerr << "bytes_on_node[1]: " << bytes_on_node[1] << std::endl;
     VisitAlloc(ptr, node, num_bytes);
   }
+  // node_ = (bytes_on_node[0] < bytes_on_node[1]) ? 0 : 1;
   return ptr;
 }
 
 void NumaAllocator::Free(void* ptr, size_t num_bytes) {
   if (num_bytes > 0) {
-    VisitFree(ptr, port::NUMAGetMemAffinity(ptr), num_bytes);
+    int aff = port::NUMAGetMemAffinity(ptr);
+    VisitFree(ptr, aff, num_bytes);
+    bytes_on_node[aff] -= num_bytes;
     port::NUMAFree(ptr, num_bytes);
   }
 }
@@ -302,10 +310,8 @@ void NumaAllocator::Free(void* ptr, size_t num_bytes) {
 int NumaAllocator::BestNode(size_t num_bytes) {
   //default to current thread's numa node
   int node = port::NUMAGetThreadNodeAffinity();
-  
-  
-
   return node;
 }
+
 
 }  // namespace tensorflow

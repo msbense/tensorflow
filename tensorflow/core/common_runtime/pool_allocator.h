@@ -173,15 +173,21 @@ class NumaAllocator : public SubAllocator {
   public:
     NumaAllocator(const std::vector<Visitor>& alloc_visitors, 
                   const std::vector<Visitor>& free_visitors)
-          : SubAllocator(alloc_visitors, free_visitors) {}
+          : SubAllocator(alloc_visitors, free_visitors) {
+            bytes_on_node[0] = 0;
+            bytes_on_node[1] = 0;
+          }
     
-    ~NumaAllocator() override {}
+    ~NumaAllocator() override {};
 
     void *Alloc(size_t alignment, size_t num_bytes) override;
 
     void Free(void *ptr, size_t num_bytes) override;
 
     private:
+
+    //track amount of memory allocated per node
+    size_t bytes_on_node[2];
 
     //Determine the best node to allocate to, given current process 
     //state
