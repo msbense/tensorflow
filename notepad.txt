@@ -1,3 +1,7 @@
+//using BasicCPUAllocator and AlignedMalloc
+total images/sec: 71.59
+    Note: 
+
 int node = 0;
 // don't set thread affinity
 total images/sec: 62.11
