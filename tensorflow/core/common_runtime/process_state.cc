@@ -60,7 +60,7 @@ ProcessState::MemDesc ProcessState::PtrType(const void* ptr) {
 }
 
 Allocator* ProcessState::GetCPUAllocator(int numa_node) {
-  // EnableNUMA();
+  // LOG(INFO) << "GetCPUAllocator";
   if (!numa_enabled_ || numa_node == port::kNUMANoAffinity) numa_node = 0;
   mutex_lock lock(mu_);
   while (cpu_allocators_.size() <= static_cast<size_t>(numa_node)) {
@@ -76,10 +76,11 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
       LOG(ERROR) << "GetCPUAllocator: " << status.error_message();
     }
     Allocator* allocator = nullptr;
+    
     SubAllocator* sub_allocator = new NumaAllocator(cpu_alloc_visitors_, cpu_free_visitors_);
     // SubAllocator* sub_allocator = new BasicCPUAllocator(port::kNUMANoAffinity, cpu_alloc_visitors_, cpu_free_visitors_);
         // = new BasicCPUAllocator(port::kNUMANoAffinity, cpu_alloc_visitors_, cpu_free_visitors_);
-        /*(numa_enabled_ || alloc_visitors_defined || use_bfc_allocator)
+    /*SubAllocator* sub_allocator = (numa_enabled_ || alloc_visitors_defined || use_bfc_allocator)
             ? new BasicCPUAllocator(
                   numa_enabled_ ? numa_node : port::kNUMANoAffinity,
                   cpu_alloc_visitors_, cpu_free_visitors_)

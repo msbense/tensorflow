@@ -25,6 +25,7 @@ limitations under the License.
 #include <map>
 #include <utility>
 #include <iostream>
+#include <execinfo.h>
 
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
@@ -263,6 +264,7 @@ void* BasicCPUAllocator::Alloc(size_t alignment, size_t num_bytes) {
   if (num_bytes > 0) {
     if (numa_node_ == port::kNUMANoAffinity) {
       ptr = port::AlignedMalloc(num_bytes, static_cast<int>(alignment));
+      // std::cerr << "Thread on " << sched_getcpu() << "with affinity" << sched << " alloc on port: " << port::NUMAGetMemAffinity(ptr) << std::endl;
     } else {
       ptr =
           port::NUMAMalloc(numa_node_, num_bytes, static_cast<int>(alignment));
@@ -285,13 +287,15 @@ void BasicCPUAllocator::Free(void* ptr, size_t num_bytes) {
 
 void *NumaAllocator::Alloc(size_t alignment, size_t num_bytes) {
   void* ptr = nullptr; 
+
   if (num_bytes > 0) {
-    int node = (bytes_on_node[0] < bytes_on_node[1]) ? 0 : 1;
+    // int node = (bytes_on_node[0] < bytes_on_node[1]) ? 0 : 1;
+    int node = BestNode(num_bytes);
     // port::NUMASetThreadNodeAffinity(node);
     ptr = port::NUMAMalloc(node, num_bytes, static_cast<int>(alignment));
     bytes_on_node[node] += num_bytes; 
-    std::cerr << "bytes_on_node[0]: " << bytes_on_node[0] << std::endl;
-    std::cerr << "bytes_on_node[1]: " << bytes_on_node[1] << std::endl;
+    // std::cerr << "bytes_on_node[0]: " << bytes_on_node[0] << std::endl;
+    // std::cerr << "bytes_on_node[1]: " << bytes_on_node[1] << std::endl;
     VisitAlloc(ptr, node, num_bytes);
   }
   // node_ = (bytes_on_node[0] < bytes_on_node[1]) ? 0 : 1;
@@ -308,9 +312,16 @@ void NumaAllocator::Free(void* ptr, size_t num_bytes) {
 }
 
 int NumaAllocator::BestNode(size_t num_bytes) {
-  //default to current thread's numa node
-  int node = port::NUMAGetThreadNodeAffinity();
-  return node;
+  return 0;
+  // return (bytes_on_node[0] < bytes_on_node[1]) ? 0 : 1;
+  // int current_cpu = sched_getcpu();
+  // int node = 0;
+  // if (current_cpu < 10) node = 0;
+  // else if (current_cpu < 20) node = 1;
+  // else if (current_cpu < 30) node = 0;
+  // else node = 1;
+
+  // return node;
 }
 
 
