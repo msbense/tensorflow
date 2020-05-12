@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstring>
 #include <vector>
+#include <execinfo.h>
 
 #include "absl/base/call_once.h"
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
@@ -42,7 +43,7 @@ namespace tensorflow {
   return instance;
 }
 
-ProcessState::ProcessState() : numa_enabled_(false) {}
+ProcessState::ProcessState() : numa_enabled_(true) {}
 
 string ProcessState::MemDesc::DebugString() {
   return strings::StrCat((loc == CPU ? "CPU " : "GPU "), dev_index,
@@ -60,7 +61,8 @@ ProcessState::MemDesc ProcessState::PtrType(const void* ptr) {
 }
 
 Allocator* ProcessState::GetCPUAllocator(int numa_node) {
-  // LOG(INFO) << "GetCPUAllocator";
+  // numa_enabled_ = true;
+  int cpy = numa_node;
   if (!numa_enabled_ || numa_node == port::kNUMANoAffinity) numa_node = 0;
   mutex_lock lock(mu_);
   while (cpu_allocators_.size() <= static_cast<size_t>(numa_node)) {
@@ -77,14 +79,15 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
     }
     Allocator* allocator = nullptr;
     
-    SubAllocator* sub_allocator = new NumaAllocator(cpu_alloc_visitors_, cpu_free_visitors_);
+    // SubAllocator* sub_allocator = new NumaAllocator(cpu_alloc_visitors_, cpu_free_visitors_);
     // SubAllocator* sub_allocator = new BasicCPUAllocator(port::kNUMANoAffinity, cpu_alloc_visitors_, cpu_free_visitors_);
         // = new BasicCPUAllocator(port::kNUMANoAffinity, cpu_alloc_visitors_, cpu_free_visitors_);
-    /*SubAllocator* sub_allocator = (numa_enabled_ || alloc_visitors_defined || use_bfc_allocator)
+    SubAllocator* sub_allocator = (numa_enabled_ || alloc_visitors_defined || use_bfc_allocator)
             ? new BasicCPUAllocator(
                   numa_enabled_ ? numa_node : port::kNUMANoAffinity,
                   cpu_alloc_visitors_, cpu_free_visitors_)
-            : nullptr; */
+            : nullptr;
+    
     if (use_bfc_allocator) {
       // TODO(reedwm): evaluate whether 64GB by default is the best choice.
       int64 cpu_mem_limit_in_mb = -1;
@@ -123,6 +126,7 @@ Allocator* ProcessState::GetCPUAllocator(int numa_node) {
       DCHECK(cpu_alloc_visitors_.empty() && cpu_free_visitors_.empty());
     }
   }
+  // LOG(INFO) << std::to_string(numa_node) << " " << std::to_string(cpy); 
   return cpu_allocators_[numa_node];
 }
 

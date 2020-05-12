@@ -183,6 +183,7 @@ class NumaAllocator : public SubAllocator {
     void *Alloc(size_t alignment, size_t num_bytes) override;
 
     void Free(void *ptr, size_t num_bytes) override;
+    int node;
 
     private:
 

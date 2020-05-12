@@ -29,6 +29,8 @@ namespace Eigen {
 class Allocator;
 class ThreadPoolInterface;
 struct ThreadPoolDevice;
+class TensorOpCost;
+
 
 template <typename Environment>
 class ThreadPoolTempl;
@@ -168,6 +170,9 @@ class ThreadPool {
   void ParallelFor(int64 total, int64 cost_per_unit,
                    const std::function<void(int64, int64)>& fn);
 
+  void ParallelFor(int64 total, int64 cost_per_unit,
+                             const std::function<void(int64, int64)>& fn, void *mem_hint);
+
   // Similar to ParallelFor above, but takes the specified scheduling strategy
   // into account.
   void ParallelFor(int64 total, const SchedulingParams& scheduling_params,
@@ -215,6 +220,11 @@ class ThreadPool {
   // pointer points to, and should not attempt to delete.
   Eigen::ThreadPoolInterface* AsEigenThreadPool() const;
 
+  struct ParallelForBlock {
+    Eigen::Index size;   // block size
+    Eigen::Index count;  // number of blocks
+  };
+
  private:
   // Divides the work represented by the range [0, total) into k shards.
   // Calls fn(i*block_size, (i+1)*block_size) from the ith shard (0 <= i < k).
@@ -226,6 +236,17 @@ class ThreadPool {
   void ParallelForFixedBlockSizeScheduling(
       const int64 total, const int64 block_size,
       const std::function<void(int64, int64)>& fn);
+
+  
+  void ParallelForNonFixedBlockSizeScheduling(
+    Eigen::Index n, const Eigen::TensorOpCost& cost,
+    std::function<Eigen::Index(Eigen::Index)> block_align,
+    std::function<void(Eigen::Index, Eigen::Index)> f, const void *mem_hint); 
+
+
+  ParallelForBlock CalculateParallelForBlock(
+      const Eigen::Index n, const Eigen::TensorOpCost& cost,
+      std::function<Eigen::Index(Eigen::Index)> block_align) const;
 
   // underlying_threadpool_ is the user_threadpool if user_threadpool is
   // provided in the constructor. Otherwise it is the eigen_threadpool_.

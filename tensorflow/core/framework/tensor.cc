@@ -805,8 +805,10 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
 // to specify an allocator, for purposes of accounting, etc. However, the
 // default allocator is widely used throughout the codebase and in client code.
 static Allocator* get_default_cpu_allocator() {
+  // int numa_aff = port::NUMAGetThreadNodeAffinity();
   static Allocator* default_cpu_allocator =
-      cpu_allocator(port::kNUMANoAffinity);
+      // cpu_allocator(numa_aff);
+      cpu_allocator();
   return default_cpu_allocator;
 }
 

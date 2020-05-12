@@ -156,6 +156,17 @@ class EagerContext : public core::RefCounted {
 
   std::function<void(std::function<void()>)>* runner() { return &runner_; }
 
+  std::function<void(std::function<void()>)>* numa_runner(int numa_node) { 
+    if (numa_node == port::kNUMANoAffinity) 
+      return runner();
+
+    return &numa_runners_[numa_node]; 
+  }
+
+  std::vector<std::function<void(std::function<void()>)>>* numa_runners() {
+    return &numa_runners_;
+  }
+
   // Specify a executor for this thread.
   void SetExecutorForThread(EagerExecutor* executor);
 
@@ -526,6 +537,7 @@ class EagerContext : public core::RefCounted {
   FunctionLibraryDefinition func_lib_def_{OpRegistry::Global(), {}};
 
   std::unique_ptr<thread::ThreadPool> thread_pool_;
+  std::vector<std::unique_ptr<thread::ThreadPool>> numa_thread_pools_;
 
   const CustomKernelCreator* const custom_kernel_creator_;
 
@@ -539,6 +551,7 @@ class EagerContext : public core::RefCounted {
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
 
   std::function<void(std::function<void()>)> runner_;
+  std::vector<std::function<void(std::function<void()>)>> numa_runners_;
 
   mutex cache_mu_;
   struct RegisteredFunction : public core::RefCounted {

@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 
+#include "tensorflow/core/common_runtime/process_state.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/scoped_allocator.h"
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
+#include "tensorflow/core/common_runtime/pool_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -31,6 +33,8 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/util.h"
+
+#include <execinfo.h>
 
 #ifdef INTEL_MKL
 #ifdef _OPENMP
@@ -75,7 +79,25 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
 ThreadPoolDevice::~ThreadPoolDevice() {}
 
 Allocator* ThreadPoolDevice::GetAllocator(AllocatorAttributes attr) {
-  return allocator_;
+  // LOG(INFO) << std::to_string(attr.numa_node);
+  // if (attr.numa_node == port::kNUMANoAffinity) {
+  if (false) {
+    void *array[10];
+    size_t size;
+    char **strings;
+    size_t i;
+
+    size = backtrace (array, 10);
+    strings = backtrace_symbols (array, size);
+
+    printf ("Obtained %zd stack frames.\n", size);
+
+    for (i = 0; i < size; i++)
+      printf ("%s\n", strings[i]);
+
+    free (strings);
+  }
+  return ProcessState::singleton()->GetCPUAllocator(attr.numa_node);
 }
 
 Allocator* ThreadPoolDevice::GetScopedAllocator(AllocatorAttributes attr,

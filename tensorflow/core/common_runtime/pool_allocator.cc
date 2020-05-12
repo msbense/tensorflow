@@ -261,12 +261,25 @@ void PoolAllocator::EvictOne() {
 
 void* BasicCPUAllocator::Alloc(size_t alignment, size_t num_bytes) {
   void* ptr = nullptr;
+  static size_t biggest_alloc = 0;
+  if (num_bytes > biggest_alloc) {
+    biggest_alloc = num_bytes;
+    LOG(INFO) << biggest_alloc << " " << std::to_string(numa_node_);
+  }
+  if (num_bytes >= 150000) {
+      return port::NUMAInterleaveMalloc(num_bytes, static_cast<int>(alignment));
+  }
   if (num_bytes > 0) {
     if (numa_node_ == port::kNUMANoAffinity) {
+      // LOG(INFO) << "Hello";
       ptr = port::AlignedMalloc(num_bytes, static_cast<int>(alignment));
-      // std::cerr << "Thread on " << sched_getcpu() << "with affinity" << sched << " alloc on port: " << port::NUMAGetMemAffinity(ptr) << std::endl;
     } else {
+      // LOG(INFO) << "Hello " << numa_node_;
+      // if (numa_node_ == 1) LOG(INFO) << "It's one"; 
+      // int numa_aff = port::NUMAGetThreadNodeAffinity() << " " << numa_node_;
+      // LOG(INFO) << "Thread " << port::NUMAGetThreadNodeAffinity() << " allocating to " << numa_node_;
       ptr =
+          // port::NUMAMalloc((numa_aff != port::kNUMANoAffinity) ? numa_aff : (std::rand() % 2), num_bytes, static_cast<int>(alignment));
           port::NUMAMalloc(numa_node_, num_bytes, static_cast<int>(alignment));
     }
     VisitAlloc(ptr, numa_node_, num_bytes);
@@ -287,26 +300,18 @@ void BasicCPUAllocator::Free(void* ptr, size_t num_bytes) {
 
 void *NumaAllocator::Alloc(size_t alignment, size_t num_bytes) {
   void* ptr = nullptr; 
-
+  // LOG(INFO) << "Hello"; 
   if (num_bytes > 0) {
-    // int node = (bytes_on_node[0] < bytes_on_node[1]) ? 0 : 1;
-    int node = BestNode(num_bytes);
-    // port::NUMASetThreadNodeAffinity(node);
     ptr = port::NUMAMalloc(node, num_bytes, static_cast<int>(alignment));
-    bytes_on_node[node] += num_bytes; 
-    // std::cerr << "bytes_on_node[0]: " << bytes_on_node[0] << std::endl;
-    // std::cerr << "bytes_on_node[1]: " << bytes_on_node[1] << std::endl;
     VisitAlloc(ptr, node, num_bytes);
   }
-  // node_ = (bytes_on_node[0] < bytes_on_node[1]) ? 0 : 1;
   return ptr;
 }
 
 void NumaAllocator::Free(void* ptr, size_t num_bytes) {
   if (num_bytes > 0) {
-    int aff = port::NUMAGetMemAffinity(ptr);
-    VisitFree(ptr, aff, num_bytes);
-    bytes_on_node[aff] -= num_bytes;
+    // int aff = port::NUMAGetMemAffinity(ptr);
+    VisitFree(ptr, node, num_bytes);
     port::NUMAFree(ptr, num_bytes);
   }
 }
@@ -314,6 +319,9 @@ void NumaAllocator::Free(void* ptr, size_t num_bytes) {
 int NumaAllocator::BestNode(size_t num_bytes) {
   return 0;
   // return (bytes_on_node[0] < bytes_on_node[1]) ? 0 : 1;
+  // int numa_aff = port::NUMAGetThreadNodeAffinity();
+  // LOG(INFO) << "Thread on " << numa_aff << " allocating on " << numa_aff;
+  // return (numa_aff != port::kNUMANoAffinity) ? numa_aff : (std::rand() % 2);
   // int current_cpu = sched_getcpu();
   // int node = 0;
   // if (current_cpu < 10) node = 0;

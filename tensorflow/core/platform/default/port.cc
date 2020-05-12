@@ -248,6 +248,64 @@ void* Realloc(void* ptr, size_t size) { return realloc(ptr, size); }
 
 void Free(void* ptr) { free(ptr); }
 
+// void *NUMAFirstTouchMalloc(size_t size, int minimum_alignment) {
+  
+//   #ifdef TENSORFLOW_USE_NUMA
+//   if (HaveHWLocTopology()) {
+//     cset = hwloc_topology_get_topology_nodeset(topology);
+//     /*static void* hwloc_alloc_membind_policy 	( 	hwloc_topology_t  	topology,
+// 		size_t  	len,
+// 		hwloc_const_bitmap_t  	set,
+// 		hwloc_membind_policy_t  	policy,
+// 		int  	flags 
+// 	) 	*/
+//   void *ptr = hwloc_alloc_membind_policy()
+//   }
+//   #endif
+//    void *ptr = AlignedMalloc(size, minimum_alignment);
+//    return ptr;
+// }
+
+// const struct hwloc_bitmap_s;
+void *NUMAInterleaveMalloc(size_t size, int minimum_alignment) {
+  void *ptr = AlignedMalloc(size, minimum_alignment);
+  #ifdef TENSORFLOW_USE_NUMA
+    if (HaveHWLocTopology()) {
+      // hwloc_const_bitmap_t cset = hwloc_topology_get_topology_nodeset(hwloc_topology_handle);
+      // // LOG(INFO) << hwloc_bitmap_weight(cset);
+      // void *ptr = hwloc_alloc_membind(hwloc_topology_handle, size, 
+                                              // cset, HWLOC_MEMBIND_NEXTTOUCH, 
+                                              // 0);
+      // return ptr;
+      int num_numa_nodes = NUMANumNodes();
+      size_t chunk_size = size / num_numa_nodes;
+      for (int n = 0; n < num_numa_nodes; n++) {
+        hwloc_obj_t numa_node = GetHWLocTypeIndex(HWLOC_OBJ_NUMANODE, n);
+        if (numa_node) {
+          void *chunk_ptr = ptr + (n * chunk_size);
+          int err = hwloc_set_area_membind_nodeset(hwloc_topology_handle, chunk_ptr, chunk_size, 
+                                  numa_node->nodeset, HWLOC_MEMBIND_BIND, HWLOC_MEMBIND_BYNODESET | HWLOC_MEMBIND_STRICT);
+          // LOG(INFO) << std::to_string(err);
+        }
+        else {
+          LOG(ERROR) << "Failed to allocate to node ";
+        }
+      }
+      int tag = std::rand() % 1000;
+      for (int n = 0; n < num_numa_nodes; n++) {
+        void *chunk_ptr = ptr + (n * chunk_size);
+        // LOG(INFO) << tag << " " << ptr << " " << std::to_string(n) << ": " << NUMAGetMemAffinity(chunk_ptr);
+      }
+    }
+    
+    // auto mbnd = hwloc_get_area_membind(hwloc_topology_handle, ptr, size, nodeset, ,HWLOC_MEMBIND_BYNODESET);
+    // LOG(INFO) << std::to_string(mbnd) <<  " " << std::to_string(mbnd == HWLOC_MEMBIND_MIXED);
+  #endif
+
+  // void *ptr = AlignedMalloc(size, minimum_alignment);
+  return ptr;
+}
+
 void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
 #ifdef TENSORFLOW_USE_NUMA
   if (HaveHWLocTopology()) {

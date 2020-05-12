@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/public/session_options.h"
+#include <execinfo.h>
 
 namespace tensorflow {
 
@@ -37,12 +38,29 @@ class ThreadPoolDeviceFactory : public DeviceFactory {
 
   Status CreateDevices(const SessionOptions& options, const string& name_prefix,
                        std::vector<std::unique_ptr<Device>>* devices) override {
+  //   void *array[4];
+  // size_t size;
+  // char **strings;
+  // size_t i;
+
+  // size = backtrace (array, 4);
+  // strings = backtrace_symbols (array, size);
+
+  // printf ("Obtained %zd stack frames.\n", size);
+
+  // for (i = 0; i < size; i++)
+  //    printf ("%s\n", strings[i]);
+
+  // free (strings);
+    
     int num_numa_nodes = port::NUMANumNodes();
     int n = 1;
     auto iter = options.config.device_count().find("CPU");
     if (iter != options.config.device_count().end()) {
       n = iter->second;
     }
+    // n = 2;
+    // LOG(INFO) << "n: " << n;
     for (int i = 0; i < n; i++) {
       string name = strings::StrCat(name_prefix, "/device:CPU:", i);
       std::unique_ptr<ThreadPoolDevice> tpd;
@@ -53,6 +71,10 @@ class ThreadPoolDeviceFactory : public DeviceFactory {
           LOG(INFO) << "Only " << num_numa_nodes
                     << " NUMA nodes visible in system, "
                     << " assigning device " << name << " to NUMA node "
+                    << numa_node;
+        }
+        else {
+          LOG(INFO) << "Assigning device " << name << " to NUMA node "
                     << numa_node;
         }
         DeviceLocality dev_locality;

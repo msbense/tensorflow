@@ -59,6 +59,9 @@ namespace tensorflow {
 void Shard(int max_parallelism, thread::ThreadPool* workers, int64 total,
            int64 cost_per_unit, std::function<void(int64, int64)> work);
 
+void Shard(int max_parallelism, thread::ThreadPool* workers, int64 total,
+           int64 cost_per_unit, std::function<void(int64, int64)> work, const void* mem_hint);
+
 // Each thread has an associated option to express the desired maximum
 // parallelism. Its default is a very large quantity.
 //

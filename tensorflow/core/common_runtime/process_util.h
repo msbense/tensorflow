@@ -48,6 +48,10 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options);
 thread::ThreadPool* NewThreadPoolFromSessionOptions(
     const SessionOptions& options);
 
+//Creates a thread pool with number of inter op threads, with numa affinity
+thread::ThreadPool* NewNUMAThreadPoolFromSessionOptions(
+    const SessionOptions& options, int numa_aff);
+
 // Schedule "closure" in the default thread queue.
 void SchedClosure(std::function<void()> closure);
 

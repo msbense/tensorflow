@@ -23,6 +23,8 @@ limitations under the License.
 #include <string.h>
 
 #include "tensorflow/core/lib/core/threadpool.h"
+// #include "tensorflow/core/common_runtime/pool_allocator.h"
+#include "tensorflow/core/common_runtime/process_state.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
@@ -162,6 +164,19 @@ thread::ThreadPool* NewThreadPoolFromSessionOptions(
       options.env, ThreadOptions(), "Compute", num_threads,
       !options.config.experimental().disable_thread_spinning(),
       /*allocator=*/nullptr);
+}
+
+thread::ThreadPool* NewNUMAThreadPoolFromSessionOptions(
+    const SessionOptions& options, int numa_aff) {
+  const int32 num_threads = NumInterOpThreadsFromSessionOptions(options);
+  VLOG(1) << "Direct session inter op parallelism threads: " << num_threads;
+  ThreadOptions thread_opts;
+  thread_opts.numa_node = numa_aff;
+  
+  return new thread::ThreadPool(
+      options.env, thread_opts, "Compute", num_threads,
+      !options.config.experimental().disable_thread_spinning(),
+      nullptr);
 }
 
 void SchedClosure(std::function<void()> closure) {

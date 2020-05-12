@@ -370,6 +370,7 @@ Status MustCompileWithXLA(const EagerOperation* op, const EagerContext& ctx,
 //    running without an explicitly requested device.
 Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
                          int* num_retvals) {
+  // LOG(INFO) << "Hello";
   MEMDEBUG_CACHE_OP(op->op_name());
   profiler::TraceMe activity(
       [&] { return absl::StrCat("EagerLocalExecute: ", op->Name()); },
@@ -506,8 +507,26 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
           "Unable to find a FunctionLibraryRuntime corresponding to device ",
           device->name());
     }
+
     auto runner = (flr != nullptr && flr->runner() != nullptr) ? flr->runner()
                                                                : ctx.runner();
+
+    // auto input_tensor_values = inputs.GetTensorValues();
+    // auto input_tensor_handles = op->MutableInputs();
+    // if (input_tensor_handles->size() > 0) {
+    //   auto tensor_handle = input_tensor_handles->at(0);
+    //   Tensor *tensor_ptr;
+    //   tensor_handle->Tensor(&tensor_ptr);
+    //   int numa_affinity = port::NUMAGetMemAffinity((void*)tensor_ptr);
+    //   if (numa_affinity != port::kNUMANoAffinity) {
+    //     // AllocatorAttributes alloc_atb;
+    //     // alloc_atb.numa_node = numa_affinity;
+    //     // opts->rets_alloc_attrs = std::vector<AllocatorAttributes>(*num_retvals, alloc_atb);
+    //     // opts->runner = ctx.numa_runner(numa_affinity);
+    //     runner = ctx.numa_runner(numa_affinity);
+    //   }
+    // }
+
     GraphCollector* graph_collector = nullptr;
     if (ctx.ShouldStoreGraphs()) {
       graph_collector = ctx.GetGraphCollector();
@@ -530,7 +549,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
       }
 #endif  // IS_MOBILE_PLATFORM
       kernel.reset(new KernelAndDeviceFunc(
-          flr, ctx.pflr(), std::move(input_dev_ptrs),
+          flr, ctx.pflr(), ctx.numa_runners(), std::move(input_dev_ptrs),
           std::move(input_resource_variable_dtypes_and_shapes), runner,
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU(), op->Name(),
           [&ctx](const int64 step_id) { return ctx.CreateRendezvous(step_id); },
@@ -539,11 +558,22 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
       DVLOG(2) << "Running " << ndef.op() << " using op kernel. "
                << ". Full node_def=" << ndef.DebugString();
       kernel.reset(new KernelAndDeviceOp(
-          ctx.GetRendezvous(), ctx.LogMemory(), flr, runner,
+          ctx.GetRendezvous(), ctx.LogMemory(), flr, ctx.numa_runners(), runner,
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU()));
     }
 
-    TF_RETURN_IF_ERROR(kernel->Init(ndef, graph_collector));
+
+    auto input_tensor_handles = op->MutableInputs();
+    if (input_tensor_handles->size() > 0) {
+      auto tensor_handle = input_tensor_handles->at(0);
+      const Tensor *tensor_ptr;
+      tensor_handle->Tensor(&tensor_ptr);
+      int numa_affinity = port::NUMAGetMemAffinity((void*)tensor_ptr);
+      TF_RETURN_IF_ERROR(kernel->Init(ndef, graph_collector, numa_affinity));
+    }
+    else {
+      TF_RETURN_IF_ERROR(kernel->Init(ndef, graph_collector));
+    }
 
     if (op->is_function()) {
       ctx.AddKernelToCache(cache_key, kernel.get());
@@ -610,7 +640,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
       retvals[i]->Unref();
     }
   }
-
+  
   return s;
 }
 
@@ -650,6 +680,7 @@ Status StoreResourceDtypesAndShapes(const eager::Operation& remote_op,
 
 Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
                           int* num_retvals) {
+  // LOG(INFO) << "Hello";
   EagerContext& ctx = op->EagerContext();
 
   // TODO(fishx): Remove following code when lazy tensor copy is ready.
@@ -932,6 +963,7 @@ Status MaybeUpdateOpDevice(EagerOperation* op) {
 
 Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
                     int* num_retvals) {
+  // LOG(INFO) << "Hello";
   profiler::TraceMe activity(
       [&] { return absl::StrCat("EagerExecute: ", op->Name()); },
       profiler::TraceMeLevel::kInfo);
@@ -987,6 +1019,7 @@ Status EagerKernelExecute(
     const core::RefCountPtr<KernelAndDevice>& kernel,
     GraphCollector* graph_collector, CancellationManager* cancellation_manager,
     absl::Span<TensorHandle*> retvals) {
+  // LOG(INFO) << "Hello";
   profiler::TraceMe activity("EagerKernelExecute",
                              profiler::TraceMeLevel::kInfo);
   std::vector<Tensor> outputs(1);
@@ -1000,6 +1033,7 @@ Status EagerKernelExecute(
   // device. We don't call it now because it is an unneeded overhead (it
   // acquires a lock) and we can't recover from errors anyway.
   ScopedStepContainer* container = ctx->StepContainer();
+  
   if (container == nullptr) {
     TF_RETURN_IF_ERROR(kernel->Run(inputs, &outputs, cancellation_manager,
                                    remote_func_params));

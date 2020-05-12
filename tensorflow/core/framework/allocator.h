@@ -334,6 +334,7 @@ struct AllocatorAttributes {
   // EXPERIMENTAL: If this is greater than zero, then allocation is delegated to
   // a named special-purpose allocator on the same device.
   int32 scope_id = 0;
+  int32 numa_node = port::kNUMANoAffinity;
 
   // Returns a human readable representation of this.
   string DebugString() const;

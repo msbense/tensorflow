@@ -1036,11 +1036,22 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
 
     FunctionLibraryRuntime* flr = GetFLR(target);
     if (flr != nullptr) {
+      
       // When target device has private thread pool, use the target device
       // runner
       thread::ThreadPool* pool = flr->device()->tensorflow_device_thread_pool();
       opts_copy.runner = (pool == nullptr) ? opts_copy.runner : flr->runner();
-
+      // opts_copy.runner = [pool](std::function<void()> c) {
+      //   pool->Schedule(std::move(c));
+      // };
+    //   
+    //   typedef std::function<void(std::function<void()>)> Runner;
+    //           std::function<void(std::function<void()>)>* runner = nullptr;
+      // opts_copy.runner = new [pool](std::function<void()> c) {
+      //     pool->Schedule(std::move(c));
+      // };
+      // std::function<void(std::function<void()>)>;
+      
       VLOG(1) << "Running component function on device " << target
               << " with handle " << handle;
       VLOG(4) << "    with " << opts_copy.DebugString();
@@ -1289,6 +1300,7 @@ void ProcessFunctionLibraryRuntime::RunInternal(
     std::vector<Tensor>* rets,
     std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
     FunctionLibraryRuntime::DoneCallback done) const {
+    
   FunctionLibraryRuntime* flr = nullptr;
   string target_device;
   FunctionLibraryRuntime::LocalHandle local_handle;

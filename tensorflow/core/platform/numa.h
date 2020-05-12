@@ -51,6 +51,9 @@ int NUMAGetThreadNodeAffinity();
 //     sense as a backing allocator for BFCAllocator, PoolAllocator, or similar.
 void* NUMAMalloc(int node, size_t size, int minimum_alignment);
 
+//Allocate size bytes, and bind them across each NUMA node
+void *NUMAInterleaveMalloc(size_t size, int minimum_alignment);
+
 // Memory allocated by NUMAMalloc must be freed via NUMAFree.
 void NUMAFree(void* ptr, size_t size);
 

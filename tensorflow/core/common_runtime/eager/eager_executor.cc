@@ -85,6 +85,7 @@ const char* EagerExecutor::StateStringLocked() {
 }
 
 Status EagerExecutor::SyncExecute(EagerNode* node) {
+  // LOG(INFO) << "Hello";
   if (Async()) {
     return errors::Internal("Executor does not support sync execution");
   }
@@ -117,7 +118,6 @@ Status EagerExecutor::AddOrExecute(std::unique_ptr<EagerNode> node) {
   item->id = next_node_id_++;
   item->node = std::move(node);
   item->state = NodeState::kPENDING;
-
   status = item->node->Prepare();
   if (!status.ok()) {
     item->node->Abort(status);
@@ -296,6 +296,7 @@ void EagerExecutor::NotifyWaiters(uint64 id) {
 }
 
 void EagerExecutor::Run() {
+  // LOG(INFO) << "Hello";
   auto thread_exited_notifier =
       gtl::MakeCleanup([this] { thread_exited_notification_.Notify(); });
   while (true) {
@@ -325,7 +326,7 @@ void EagerExecutor::Run() {
 
 Status EagerExecutor::RunItem(core::RefCountPtr<NodeItem> item,
                               bool from_queue) {
-  DVLOG(3) << "Running Node: [id " << item->id << "] "
+  /*DVLOG(3)*/ LOG(INFO) << "Running Node: [id " << item->id << "] "
            << item->node->DebugString();
   AsyncEagerNode* async_node = item->node->AsAsync();
   if (async_node == nullptr) {

@@ -82,10 +82,16 @@ Allocator* cpu_allocator(int numa_node) {
   // to cpu_allocator, if devices are ever to be created in the process.
   // Device creation in turn triggers ProcessState creation and the availability
   // of the correct access pointer via this function call.
+  // int numa_aff = port::NUMAGetThreadNodeAffinity();
   static ProcessStateInterface* ps =
       AllocatorFactoryRegistry::singleton()->process_state();
   if (ps) {
-    return ps->GetCPUAllocator(numa_node);
+    // if (numa_aff != port::kNUMANoAffinity) {
+    //   return ps->GetCPUAllocator(numa_aff);
+    // }
+    // else {
+      return ps->GetCPUAllocator(numa_node);
+    // }
   } else {
     return cpu_allocator_base();
   }

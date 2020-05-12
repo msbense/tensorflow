@@ -49,7 +49,7 @@ class SessionState {
   // For generating unique ids for tensors stored in the session.
   int64 tensor_id_ = 0;
 
-  // The live tensors in the session. A map from tensor handle to tensor.
+  // The live tensors in the seion. A map from tensor handle to tensor.
   std::unordered_map<string, Tensor> tensors_;
 };
 

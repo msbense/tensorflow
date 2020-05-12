@@ -124,21 +124,26 @@ LocalDevice::LocalDevice(const SessionOptions& options,
   }
 
   if (use_global_threadpool_) {
+    // LOG(INFO) << "Hello";
     mutex_lock l(global_tp_mu_);
     if (options.config.experimental().use_numa_affinity()) {
-      int numa_node = attributes.locality().numa_node();
+    // if (true) {
+      // int numa_node = attributes.locality().numa_node();
       int num_numa_nodes = port::NUMANumNodes();
-      DCHECK_LT(numa_node, num_numa_nodes);
-      Allocator* numa_allocator =
-          ProcessState::singleton()->GetCPUAllocator(numa_node);
-      while (numa_node >= global_tp_info_.size()) {
-        global_tp_info_.push_back(nullptr);
+      for (int numa_node = 0; numa_node < num_numa_nodes; numa_node++) {
+      // DCHECK_LT(numa_node, num_numa_nodes);
+        Allocator* numa_allocator =
+            ProcessState::singleton()->GetCPUAllocator(numa_node);
+        while (numa_node >= global_tp_info_.size()) {
+          global_tp_info_.push_back(nullptr);
+        }
+        
+        if (!global_tp_info_[numa_node]) {
+          global_tp_info_[numa_node] = new LocalDevice::EigenThreadPoolInfo(
+              options, numa_node, numa_allocator);
+        }
       }
-      if (!global_tp_info_[numa_node]) {
-        global_tp_info_[numa_node] = new LocalDevice::EigenThreadPoolInfo(
-            options, numa_node, numa_allocator);
-      }
-      tp_info = global_tp_info_[numa_node];
+      tp_info = global_tp_info_[0];
     } else {
       if (global_tp_info_.empty()) {
         global_tp_info_.push_back(new LocalDevice::EigenThreadPoolInfo(
@@ -147,6 +152,7 @@ LocalDevice::LocalDevice(const SessionOptions& options,
       tp_info = global_tp_info_[0];
     }
   } else {
+    // LOG(INFO) << "Hello";
     // Each LocalDevice owns a separate ThreadPoolDevice for numerical
     // computations.
     // TODO(tucker): NUMA for these too?
@@ -157,6 +163,15 @@ LocalDevice::LocalDevice(const SessionOptions& options,
   set_tensorflow_cpu_worker_threads(&tp_info->eigen_worker_threads_);
   set_eigen_cpu_device(tp_info->eigen_device_.get());
 }
+
+const DeviceBase::CpuWorkerThreads* LocalDevice::tensorflow_cpu_worker_threads(int numa_aff) const {
+    if (numa_aff != port::kNUMANoAffinity && global_tp_info_.size() > numa_aff) {
+      EigenThreadPoolInfo& tp = *global_tp_info_[numa_aff];
+      return &(tp.eigen_worker_threads_);
+    }
+    // LOG(INFO) << "Hello no aff";
+    return DeviceBase::tensorflow_cpu_worker_threads(port::kNUMANoAffinity);
+  }
 
 LocalDevice::~LocalDevice() {}
 

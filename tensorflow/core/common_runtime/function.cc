@@ -189,6 +189,9 @@ class FunctionLibraryRuntimeOverlay : public FunctionLibraryRuntime {
 
   Status CreateKernel(const std::shared_ptr<const NodeProperties>& props,
                       OpKernel** kernel) override;
+  
+  Status CreateKernel(const std::shared_ptr<const NodeProperties>& props,
+                      OpKernel** kernel, int numa_aff) override;
 
   bool IsStateful(const string& function_name) const override;
 
@@ -270,6 +273,13 @@ Status FunctionLibraryRuntimeOverlay::CreateKernel(
       "Overlay function library runtime doesn't support kernel creation.");
 }
 
+Status FunctionLibraryRuntimeOverlay::CreateKernel(
+    const std::shared_ptr<const NodeProperties>&, OpKernel**, int) {
+  return errors::Internal(
+    "Overlay function library runtime doesn't support kernel creation.");
+}
+
+
 bool FunctionLibraryRuntimeOverlay::IsStateful(
     const string& function_name) const {
   // Important: we do not forward lookup to the base FLR.
@@ -348,6 +358,9 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   Status CreateKernel(const std::shared_ptr<const NodeProperties>& props,
                       OpKernel** kernel) override;
+            
+  Status CreateKernel(const std::shared_ptr<const NodeProperties>& props,
+                      OpKernel** kernel, int numa_aff);        
 
   void Run(const Options& opts, Handle handle, gtl::ArraySlice<Tensor> args,
            std::vector<Tensor>* rets, DoneCallback done) override;
@@ -433,6 +446,10 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   // FunctionLibraryDefinition.
   Status CreateKernel(const std::shared_ptr<const NodeProperties>& props,
                       FunctionLibraryRuntime* flr, OpKernel** kernel);
+  Status CreateKernel(const std::shared_ptr<const NodeProperties>& props,
+                      FunctionLibraryRuntime* flr, OpKernel** kernel, int numa_aff);
+  
+
   Status FunctionDefToBody(const FunctionDef& fdef, AttrSlice attrs,
                            const FunctionLibraryDefinition* lib_def,
                            std::unique_ptr<FunctionBody>* fbody);
@@ -483,6 +500,7 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
   };
   create_kernel_ = [this](const std::shared_ptr<const NodeProperties>& props,
                           OpKernel** kernel) {
+    // LOG(INFO) << "Hello";
     return CreateKernel(props, kernel);
   };
   thread::ThreadPool* pool = nullptr;
@@ -494,6 +512,7 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
   }
   if (pool != nullptr) {
     default_runner_ = [pool](Executor::Args::Closure c) {
+      // LOG(INFO) << "Hello";
       pool->Schedule(std::move(c));
     };
   }
@@ -597,12 +616,23 @@ Status FunctionLibraryRuntimeImpl::GetRetTypes(Handle h,
 
 Status FunctionLibraryRuntimeImpl::CreateKernel(
     const std::shared_ptr<const NodeProperties>& props, OpKernel** kernel) {
-  return CreateKernel(props, this, kernel);
+  return CreateKernel(props, kernel, 0);
+}
+
+Status FunctionLibraryRuntimeImpl::CreateKernel(
+    const std::shared_ptr<const NodeProperties>& props, OpKernel** kernel, int numa_aff) {
+  return CreateKernel(props, this, kernel, numa_aff);
 }
 
 Status FunctionLibraryRuntimeImpl::CreateKernel(
     const std::shared_ptr<const NodeProperties>& props,
     FunctionLibraryRuntime* flr, OpKernel** kernel) {
+  return CreateKernel(props, this, kernel, 0);
+}
+
+Status FunctionLibraryRuntimeImpl::CreateKernel(
+    const std::shared_ptr<const NodeProperties>& props,
+    FunctionLibraryRuntime* flr, OpKernel** kernel, int numa_aff) {
   // If a custom kernel creator is given, try that.
   Status s;
   if (custom_kernel_creator_ != nullptr &&
@@ -622,7 +652,7 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
   if (lib_def->Find(props->node_def.op()) == nullptr) {
     // A primitive operation. Creates the registered kernel.
     return CreateNonCachedKernel(device_, flr, props, graph_def_version_,
-                                 kernel);
+                                 kernel, numa_aff);
   }
 
   // Try to instantiate this function for the func/attr. Maybe it's

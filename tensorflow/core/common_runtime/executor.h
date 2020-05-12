@@ -248,6 +248,9 @@ class ExecutorBarrier {
 Status CreateNonCachedKernel(Device* device, FunctionLibraryRuntime* flib,
                              const std::shared_ptr<const NodeProperties>& props,
                              int graph_def_version, OpKernel** kernel);
+Status CreateNonCachedKernel(Device* device, FunctionLibraryRuntime* flib,
+                             const std::shared_ptr<const NodeProperties>& props,
+                             int graph_def_version, OpKernel** kernel, int numa_node);
 
 // Deletes "kernel" returned by CreateKernel.
 void DeleteNonCachedKernel(OpKernel* kernel);

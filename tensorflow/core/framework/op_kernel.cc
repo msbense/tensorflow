@@ -22,10 +22,12 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <execinfo.h>
 
 #include "absl/base/call_once.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -106,6 +108,7 @@ OpKernel::OpKernel(OpKernelConstruction* context, bool is_deferred)
       graph_def_version_(context->graph_def_version()),
       is_deferred_(is_deferred),
       cost_estimate_(OpKernel::kInitialCostEstimateCycles) {
+
   OP_REQUIRES_OK(context,
                  NameRangesForNode(props_->node_def, *props_->op_def,
                                    &input_name_map_, &output_name_map_));
@@ -327,10 +330,14 @@ const int OpKernelContext::Params::kNoReservation;
 
 OpKernelContext::OpKernelContext(Params* params)
     : OpKernelContext(
-          params, static_cast<int>(params->op_kernel->output_types().size())) {}
+          params, static_cast<int>(params->op_kernel->output_types().size())) {
+            
+          }
 
 OpKernelContext::OpKernelContext(Params* params, int num_outputs)
     : params_(params), outputs_(num_outputs) {
+
+    
   if (params_->record_tensor_accesses || params_->track_allocations) {
     tracking_state_ = absl::make_unique<TrackingState>();
   }
@@ -365,12 +372,17 @@ OpKernelContext::~OpKernelContext() {
 
 Allocator* OpKernelContext::get_allocator(AllocatorAttributes attr) {
   Allocator* allocator = nullptr;
+  
   if (TF_PREDICT_FALSE(attr.scope_id > 0)) {
     allocator = params_->device->GetScopedAllocator(attr, step_id());
     CHECK(allocator);
   } else {
+    
     allocator = params_->device->GetAllocator(attr);
+    // LOG(INFO) << params_->device->name();
   }
+
+
   if (TF_PREDICT_FALSE(track_allocations())) {
     DCHECK(tracking_state_);
     mutex_lock lock(tracking_state_->mu);
@@ -728,6 +740,12 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
         "turning off the ScopedAllocator optimizer.");
   }
   AllocatorAttributes attr = output_alloc_attr(index);
+  // LOG(INFO) << attr.numa_node;
+  // if (attr.numa_node == port::kNUMANoAffinity){
+  //   int numa_aff = port::NUMAGetThreadNodeAffinity();
+  //   if (numa_aff != port::kNUMANoAffinity) 
+  //     attr.numa_node = port::NUMAGetThreadNodeAffinity();
+  // }
   return allocate_output(index, shape, tensor, attr);
 }
 
@@ -764,6 +782,8 @@ Status OpKernelContext::allocate_tensor(
     DataType type, const TensorShape& shape, Tensor* out_tensor,
     AllocatorAttributes attr, const AllocationAttributes& allocation_attr) {
   Allocator* a = get_allocator(attr);
+
+  // LOG(INFO) << attr.numa_node << " " << std::to_string(port::NUMAGetThreadNodeAffinity()); //-1 0
   MEMDEBUG_CACHE_OP(op_kernel().name().c_str());
   MEMDEBUG_CACHE_STEPID(step_id());
   Tensor new_tensor(a, type, shape,
@@ -789,6 +809,7 @@ Status OpKernelContext::allocate_tensor(
 Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
                                         Tensor** output,
                                         AllocatorAttributes attr) {
+                                      
   if (index < 0) {
     return errors::Internal("allocate_output with bad index=", index,
                             " kernel=", params_->op_kernel->name());

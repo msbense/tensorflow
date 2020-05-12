@@ -96,6 +96,7 @@ class KernelAndDevice : public core::RefCounted {
   // The provided FunctionLibraryRuntime MUST outlive all calls to
   // Run() on the returned KernelAndDevice.
   virtual Status Init(const NodeDef& ndef, GraphCollector* graph_collector) = 0;
+  virtual Status Init(const NodeDef& ndef, GraphCollector* graph_collector, int numa_aff) = 0;
 
   // Non-multi-device functions are run using regular CallOp and look like
   // primitive operations from KernelAndDevice perspective.
@@ -111,6 +112,19 @@ class KernelAndDevice : public core::RefCounted {
         flr_(flr),
         collective_executor_(std::move(collective_executor)),
         runner_(runner) {}
+  
+  KernelAndDevice(
+      FunctionLibraryRuntime* flr,
+      std::vector<std::function<void(std::function<void()>)>>* numa_runners,
+      std::function<void(std::function<void()>)>* runner,
+      std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
+      Device* host_cpu_device)
+      : device_(flr == nullptr ? nullptr : flr->device()),
+        host_cpu_device_(host_cpu_device),
+        flr_(flr),
+        collective_executor_(std::move(collective_executor)),
+        runner_(runner),
+        numa_runners_(numa_runners) {}
 
   // Not thread safe.
   ~KernelAndDevice() override {}
@@ -154,6 +168,7 @@ class KernelAndDevice : public core::RefCounted {
 
  protected:
   std::function<void(std::function<void()>)>* get_runner() const;
+  std::vector<std::function<void(std::function<void()>)>>* numa_runners_;
 
   Device* const device_;               // can be null
   Device* const host_cpu_device_;      // non-null
@@ -180,10 +195,26 @@ class KernelAndDeviceOp final : public KernelAndDevice {
         step_container_(0, [this](const string& name) {
           device_->resource_manager()->Cleanup(name).IgnoreError();
         }) {}
+  
+  KernelAndDeviceOp(
+      tensorflow::Rendezvous* rendez, bool log_memory,
+      FunctionLibraryRuntime* flr,
+      std::vector<std::function<void(std::function<void()>)>>* numa_runners,
+      std::function<void(std::function<void()>)>* runner,
+      std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
+      Device* host_cpu_device)
+      : KernelAndDevice(flr, numa_runners, runner, std::move(collective_executor),
+                        host_cpu_device),
+        rendez_(rendez),
+        log_memory_(log_memory),
+        step_container_(0, [this](const string& name) {
+          device_->resource_manager()->Cleanup(name).IgnoreError();
+        }) {}
 
   ~KernelAndDeviceOp() override {}
 
   Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
+  Status Init(const NodeDef& ndef, GraphCollector* graph_collector, int numa_aff) override; 
 
   Status Run(const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
              CancellationManager* cancellation_manager,
@@ -257,6 +288,36 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
           }
         }) {}
 
+  KernelAndDeviceFunc(
+      FunctionLibraryRuntime* flr, ProcessFunctionLibraryRuntime* pflr,
+      std::vector<std::function<void(std::function<void()>)>>* numa_runners,
+      std::vector<Device*> input_devices,
+      std::unordered_map<int, DtypeAndPartialTensorShape>
+          input_resource_dtypes_and_shapes,
+      std::function<void(std::function<void()>)>* runner,
+      std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
+      Device* host_cpu_device, const string& name,
+      std::function<Rendezvous*(const int64)> rendezvous_creator,
+      std::function<int64()> get_op_id)
+      : KernelAndDevice(flr, numa_runners, runner, std::move(collective_executor),
+                        host_cpu_device),
+        pflr_(pflr),
+        handle_(kInvalidHandle),
+        input_devices_(std::move(input_devices)),
+        input_resource_dtypes_and_shapes_(
+            std::move(input_resource_dtypes_and_shapes)),
+        name_(name),
+        rendezvous_creator_(std::move(rendezvous_creator)),
+        get_op_id_(std::move(get_op_id)),
+        step_container_(0, [this](const string& name) {
+          // TODO(b/139809335): This does not properly clean up remote resources
+          const std::vector<Device*> devices =
+              pflr_->device_mgr()->ListDevices();
+          for (Device* device : devices) {
+            device->resource_manager()->Cleanup(name).IgnoreError();
+          }
+        }) {}
+
   ~KernelAndDeviceFunc() override;
 
   bool IsFunction() override { return true; };
@@ -264,6 +325,7 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   Status InstantiateFunc(const NodeDef& ndef, GraphCollector* graph_collector);
 
   Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
+  Status Init(const NodeDef& ndef, GraphCollector* graph_collector, int numa_aff) override; 
 
   Status Run(const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
              CancellationManager* cancellation_manager,

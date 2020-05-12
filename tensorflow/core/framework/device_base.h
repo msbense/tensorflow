@@ -136,6 +136,10 @@ class DeviceBase {
   }
 
   virtual const CpuWorkerThreads* tensorflow_cpu_worker_threads() const {
+    return tensorflow_cpu_worker_threads(port::NUMAGetThreadNodeAffinity());
+  }
+
+  virtual const CpuWorkerThreads* tensorflow_cpu_worker_threads(int numa_aff) const {
     CHECK(cpu_worker_threads_ != nullptr);
     return cpu_worker_threads_;
   }

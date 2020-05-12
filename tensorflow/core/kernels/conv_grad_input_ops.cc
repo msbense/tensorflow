@@ -21,6 +21,7 @@ limitations under the License.
 #include <algorithm>
 #include <limits>
 #include <vector>
+#include <execinfo.h>
 
 #include "absl/base/dynamic_annotations.h"
 #include "tensorflow/core/framework/bounds_check.h"
@@ -460,6 +461,8 @@ class Conv2DBackpropInputOp : public OpKernel {
                                 input_sizes.vec<int32>(), &input_shape));
 
     Tensor* in_backprop = nullptr;
+    // LOG(INFO) << input_shape.DebugString();
+    // context->output_alloc_attr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
 
@@ -546,6 +549,7 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
+
     const Tensor& input_sizes = context->input(0);
     const Tensor& filter = context->input(1);
     const Tensor& out_backprop = context->input(2);
@@ -567,8 +571,15 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
                        explicit_paddings_, data_format_, &dims));
 
     Tensor* in_backprop = nullptr;
+    // LOG(INFO) << input_shape.DebugString();
+    // LOG(INFO) << std::to_string(context->output_alloc_attr(0).numa_node);
+    // LOG(INFO) << std::to_string(port::NUMAGetThreadNodeAffinity()) << std::to_string(context->output_alloc_attr(0).numa_node);
+    AllocatorAttributes alloc_attb;
+    alloc_attb.numa_node = port::NUMAGetThreadNodeAffinity();
+    // LOG(INFO) << std::to_string(alloc_attb.numa_node);
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input_shape, &in_backprop));
+                  //  context->allocate_output(0, input_shape, &in_backprop, alloc_attb));
 
     // If there is nothing to compute, return.
     if (input_shape.num_elements() == 0) {
@@ -655,6 +666,8 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     const size_t work_unit_size = size_A + size_B + size_C;
 
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
+    // context->device()->tensorflow_device_thread_pool();
+    // context->device()->tensor
 
     // Calculate per-thread work unit size.
     const size_t thread_work_unit_size =
@@ -686,6 +699,7 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
                                     static_cast<int64>(output_image_size),
                                     static_cast<int64>(filter_total_size)}),
                        &col_buffer));
+                      // &col_buffer, alloc_attb));
 
     // The input offset corresponding to a single input image.
     const int input_offset = dims.spatial_dims[0].input_size *
@@ -748,6 +762,7 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
                       &out_backprop_data, &filter_data, &input_offset,
                       &output_offset, &size_C](int64 start, int64 limit) {
           for (int shard_id = start; shard_id < limit; ++shard_id) {
+            
             T* im2col_buf = col_buffer_data + shard_id * size_C;
             T* input_data = input_backprop_data + shard_id * input_offset;
             const T* out_data = out_backprop_data + shard_id * output_offset;
@@ -765,12 +780,16 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
                       dims.spatial_dims[1].stride, input_data);
           }
         };
+        // LOG(INFO) << "col_buffer_data " << (void*)col_buffer_data;
+        // LOG(INFO) << "input_backprop_data " << (void*)input_backprop_data;
+        // LOG(INFO) << "out_backprop_data " << (void*)out_backprop_data;
         Shard(worker_threads.num_threads, worker_threads.workers, shard_limit,
-              work_unit_size, shard);
+              work_unit_size, shard, out_backprop_data);
 
         input_backprop_data += input_offset * shard_limit;
         out_backprop_data += output_offset * shard_limit;
       }
+      // LOG(INFO) << "Done...";
     }
   }
 

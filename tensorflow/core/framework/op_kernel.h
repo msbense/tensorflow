@@ -667,6 +667,8 @@ class OpKernelContext {
     // Array indexed by output number for this node
     const AllocatorAttributes* output_attr_array = nullptr;
 
+    int numa_node = port::kNUMANoAffinity;
+
     // Shared resources accessible by this op kernel invocation.
     ResourceMgr* resource_manager = nullptr;
 
@@ -1022,12 +1024,15 @@ class OpKernelContext {
                        const AllocationAttributes& allocation_attr);
   Status allocate_temp(DataType type, const TensorShape& shape,
                        Tensor* out_temp, AllocatorAttributes allocator_attr) {
+                         
     return allocate_temp(type, shape, out_temp, allocator_attr,
                          AllocationAttributes());
   }
   Status allocate_temp(DataType type, const TensorShape& shape,
                        Tensor* out_temp) {
-    return allocate_temp(type, shape, out_temp, AllocatorAttributes());
+    AllocatorAttributes alloc_attb;
+    // alloc_attb.numa_node = port::NUMAGetThreadNodeAffinity();
+    return allocate_temp(type, shape, out_temp, alloc_attb);
   }
 
   // Allocates a Tensor of the specified type and shape which the Op

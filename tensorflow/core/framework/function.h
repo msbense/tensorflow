@@ -729,6 +729,10 @@ class FunctionLibraryRuntime {
   virtual Status CreateKernel(
       const std::shared_ptr<const NodeProperties>& props,
       OpKernel** kernel) = 0;
+  
+  virtual Status CreateKernel(
+      const std::shared_ptr<const NodeProperties>& props,
+      OpKernel** kernel, int numa_aff) = 0;
 
   // Returns true iff the function named `function_name` is stateful.
   //

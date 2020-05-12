@@ -37,6 +37,8 @@ class LocalDevice : public Device {
               const DeviceAttributes& attributes);
   ~LocalDevice() override;
 
+  const CpuWorkerThreads* tensorflow_cpu_worker_threads(int numa_aff) const;
+
  private:
   static bool use_global_threadpool_;
 
@@ -45,6 +47,7 @@ class LocalDevice : public Device {
   }
 
   struct EigenThreadPoolInfo;
+  
   std::unique_ptr<EigenThreadPoolInfo> owned_tp_info_;
 
   // All ThreadPoolDevices in the process associated with the same

@@ -95,6 +95,7 @@ EagerContext::EagerContext(
       use_send_tensor_rpc_(false),
       pin_small_ops_to_cpu_(ReadBoolFromEnvVar(
           "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)) {
+  
   ResetPFLR(device_mgr, opts.env, &opts.config, TF_GRAPH_DEF_VERSION,
             &func_lib_def_, opts.config.graph_options().optimizer_options(),
             thread_pool_.get(), cluster_flr, custom_kernel_creator_);
@@ -104,9 +105,18 @@ EagerContext::EagerContext(
   eager_context_created->GetCell()->Set(true);
   monitoring::StartExporter();
   InitPrioritizedDeviceTypeList();
+
+  for (int i = 0; i < port::NUMANumNodes(); i++) {
+    numa_thread_pools_.push_back(std::unique_ptr<thread::ThreadPool>(NewNUMAThreadPoolFromSessionOptions(opts, i)));
+    numa_runners_.push_back([this, i](std::function<void()> closure) {
+      this->numa_thread_pools_[i]->Schedule(std::move(closure));
+    });
+  } 
+
   runner_ = [this](std::function<void()> closure) {
     this->thread_pool_->Schedule(std::move(closure));
   };
+
 
 #if !defined(IS_MOBILE_PLATFORM)
   context_id_ = kInvalidContextId;

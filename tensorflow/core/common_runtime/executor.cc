@@ -2977,8 +2977,17 @@ Status NewLocalExecutor(const LocalExecutorParams& params, const Graph& graph,
 Status CreateNonCachedKernel(Device* device, FunctionLibraryRuntime* flib,
                              const std::shared_ptr<const NodeProperties>& props,
                              int graph_def_version, OpKernel** kernel) {
+  return CreateNonCachedKernel(device, flib, props, graph_def_version, kernel, 0);
+}
+
+Status CreateNonCachedKernel(Device* device, FunctionLibraryRuntime* flib,
+                             const std::shared_ptr<const NodeProperties>& props,
+                             int graph_def_version, OpKernel** kernel, int numa_aff) {
   const auto device_type = DeviceType(device->attributes().device_type());
-  auto allocator = device->GetAllocator(AllocatorAttributes());
+  AllocatorAttributes alloc_attb;
+  alloc_attb.numa_node = numa_aff;
+  // auto allocator = device->GetAllocator(AllocatorAttributes());
+  auto allocator = device->GetAllocator(alloc_attb);
   return CreateOpKernel(device_type, device, allocator, flib,
                         device->resource_manager(), props, graph_def_version,
                         kernel);

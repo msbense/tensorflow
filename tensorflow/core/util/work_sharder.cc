@@ -31,6 +31,13 @@ int GetPerThreadMaxParallelism() { return per_thread_max_parallelism; }
 
 void Shard(int max_parallelism, thread::ThreadPool* workers, int64 total,
            int64 cost_per_unit, std::function<void(int64, int64)> work) {
+      Shard(max_parallelism, workers, total, cost_per_unit, work, nullptr);
+}
+
+void Shard(int max_parallelism, thread::ThreadPool* workers, int64 total,
+           int64 cost_per_unit, std::function<void(int64, int64)> work, const void *mem_hint) {
+  // LOG(INFO) << "Hello, shard scheduled on numa node " << std::to_string(port::NUMAGetThreadNodeAffinity()) << 
+  //               " w parallelism " << max_parallelism; 
   CHECK_GE(total, 0);
   if (total == 0) {
     return;
@@ -42,12 +49,16 @@ void Shard(int max_parallelism, thread::ThreadPool* workers, int64 total,
     return;
   }
   if (max_parallelism >= workers->NumThreads()) {
+    // LOG(INFO) << "workers->ParallelFor";
     workers->ParallelFor(total, cost_per_unit, work);
     return;
   }
+  // LOG(INFO) << "Sharder::Do";
   Sharder::Do(
       total, cost_per_unit, work,
-      [&workers](Sharder::Closure c) { workers->Schedule(c); },
+      [&workers](Sharder::Closure c) { 
+        workers->Schedule(c); 
+      },
       max_parallelism);
 }
 

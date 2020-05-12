@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/platform/numa.h"
 #include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/platform/tracing.h"
+#include <execinfo.h>
 
 namespace tensorflow {
 namespace thread {
@@ -56,6 +57,8 @@ struct EigenEnvironment {
       port::ScopedFlushDenormal flush;
       // Set the processor rounding mode to ROUND TO NEAREST.
       port::ScopedSetRound round(FE_TONEAREST);
+      // port::NUMASetThreadNodeAffinity(1);
+      LOG(INFO) << thread_options_.numa_node;
       if (thread_options_.numa_node != port::kNUMANoAffinity) {
         port::NUMASetThreadNodeAffinity(thread_options_.numa_node);
       }
@@ -115,6 +118,7 @@ ThreadPool::~ThreadPool() {}
 
 void ThreadPool::Schedule(std::function<void()> fn) {
   CHECK(fn != nullptr);
+  // LOG(INFO) << std::to_string(port::NUMAGetThreadNodeAffinity()); // 0
   underlying_threadpool_->Schedule(std::move(fn));
 }
 
@@ -161,6 +165,127 @@ void ThreadPool::TransformRangeConcurrently(
               fn);
 }
 
+
+  // Calculates block size based on (1) the iteration cost and (2) parallel
+  // efficiency. We want blocks to be not too small to mitigate parallelization
+  // overheads; not too large to mitigate tail effect and potential load
+  // imbalance and we also want number of blocks to be evenly dividable across
+  // threads.
+  ThreadPool::ParallelForBlock ThreadPool::CalculateParallelForBlock(
+      const Eigen::Index n, const Eigen::TensorOpCost& cost,
+      std::function<Eigen::Index(Eigen::Index)> block_align) const {
+
+    typedef Eigen::TensorCostModel<Eigen::ThreadPoolDevice> CostModel;
+    const double block_size_f = 1.0 / CostModel::taskSize(1, cost);
+    const Eigen::Index max_oversharding_factor = 4;
+    Eigen::Index block_size = Eigen::numext::mini(
+        n, Eigen::numext::maxi<Eigen::Index>(
+               Eigen::divup<Eigen::Index>(n, max_oversharding_factor * underlying_threadpool_->NumThreads()),
+               block_size_f));
+    const Eigen::Index max_block_size = Eigen::numext::mini(n, 2 * block_size);
+
+    if (block_align) {
+      Eigen::Index new_block_size = block_align(block_size);
+      eigen_assert(new_block_size >= block_size);
+      block_size = Eigen::numext::mini(n, new_block_size);
+    }
+
+    Eigen::Index block_count = Eigen::divup(n, block_size);
+
+    // Calculate parallel efficiency as fraction of total CPU time used for
+    // computations:
+    double max_efficiency =
+        static_cast<double>(block_count) /
+        (Eigen::divup<int>(block_count, NumThreads()) * NumThreads());
+
+    // Now try to increase block size up to max_block_size as long as it
+    // doesn't decrease parallel efficiency.
+    for (Eigen::Index prev_block_count = block_count;
+         max_efficiency < 1.0 && prev_block_count > 1;) {
+      // This is the next block size that divides size into a smaller number
+      // of blocks than the current block_size.
+      Eigen::Index coarser_block_size = Eigen::divup(n, prev_block_count - 1);
+      if (block_align) {
+        Eigen::Index new_block_size = block_align(coarser_block_size);
+        eigen_assert(new_block_size >= coarser_block_size);
+        coarser_block_size = Eigen::numext::mini(n, new_block_size);
+      }
+      if (coarser_block_size > max_block_size) {
+        break;  // Reached max block size. Stop.
+      }
+      // Recalculate parallel efficiency.
+      const Eigen::Index coarser_block_count = Eigen::divup(n, coarser_block_size);
+      eigen_assert(coarser_block_count < prev_block_count);
+      prev_block_count = coarser_block_count;
+      const double coarser_efficiency =
+          static_cast<double>(coarser_block_count) /
+          (Eigen::divup<int>(coarser_block_count, NumThreads()) * NumThreads());
+      if (coarser_efficiency + 0.01 >= max_efficiency) {
+        // Taking it.
+        block_size = coarser_block_size;
+        block_count = coarser_block_count;
+        if (max_efficiency < coarser_efficiency) {
+          max_efficiency = coarser_efficiency;
+        }
+      }
+    }
+
+    return {block_size, block_count};
+  }
+
+void ThreadPool::ParallelForNonFixedBlockSizeScheduling(
+    Eigen::Index n, const Eigen::TensorOpCost& cost,
+    std::function<Eigen::Index(Eigen::Index)> block_align,
+    std::function<void(Eigen::Index, Eigen::Index)> f, const void *mem_hint) {
+
+      // Compute small problems directly in the caller thread.
+    if (n <= 1 || NumThreads() == 1) {
+      f(0, n);
+      return;
+    }
+
+    // Compute block size and total count of blocks.
+    ParallelForBlock block = CalculateParallelForBlock(n, cost, block_align);
+
+    // Recursively divide size into halves until we reach block_size.
+    // Division code rounds mid to block_size, so we are guaranteed to get
+    // block_count leaves that do actual computations.
+    BlockingCounter barrier(static_cast<unsigned int>(block.count));
+    std::function<void(Eigen::Index, Eigen::Index)> handleRange;
+    handleRange = [=, &handleRange, &barrier, &f](Eigen::Index firstIdx,
+                                                  Eigen::Index lastIdx) {
+      while (lastIdx - firstIdx > block.size) {
+        // Split into halves and schedule the second half on a different thread.
+        const Eigen::Index midIdx = firstIdx + Eigen::divup((lastIdx - firstIdx) / 2, block.size) * block.size;
+        Schedule([=, &handleRange]() { handleRange(midIdx, lastIdx); });
+        lastIdx = midIdx;
+      }
+      int numa_node = port::NUMAGetMemAffinity(mem_hint + firstIdx);
+      if (numa_node == 1) {
+      LOG(INFO) << std::to_string(port::NUMAGetMemAffinity(mem_hint)) << " " << std::to_string(numa_node);
+      }
+      // int numa_node = std::rand() % 2;
+      if (numa_node != port::kNUMANoAffinity)
+        port::NUMASetThreadNodeAffinity(numa_node);
+      // Single block or less, execute directly.
+      f(firstIdx, lastIdx);
+      barrier.DecrementCount();
+    };
+
+    if (block.count <= NumThreads()) {
+      // Avoid a thread hop by running the root of the tree and one block on the
+      // main thread.
+      handleRange(0, n);
+    } else {
+      // Execute the root in the thread pool to avoid running work on more than
+      // numThreads() threads.
+      Schedule([=, &handleRange]() { handleRange(0, n); });
+    }
+
+    barrier.Wait();
+
+}
+
 // This functionality is similar to parallelFor, except that reasoning about
 // the number of shards used is significantly easier.
 void ThreadPool::ParallelForFixedBlockSizeScheduling(
@@ -202,12 +327,34 @@ void ThreadPool::ParallelForFixedBlockSizeScheduling(
 
 void ThreadPool::ParallelFor(int64 total, int64 cost_per_unit,
                              const std::function<void(int64, int64)>& fn) {
+  ThreadPool::ParallelFor(total, cost_per_unit, fn, nullptr);
+}
+
+void ThreadPool::ParallelFor(int64 total, int64 cost_per_unit,
+                             const std::function<void(int64, int64)>& fn, void *mem_hint) {
   CHECK_GE(total, 0);
   CHECK_EQ(total, (int64)(Eigen::Index)total);
-  threadpool_device_->parallelFor(
-      total, Eigen::TensorOpCost(0, 0, cost_per_unit),
-      [&fn](Eigen::Index first, Eigen::Index last) { fn(first, last); });
+
+  ThreadPool::ParallelForNonFixedBlockSizeScheduling(
+    total, Eigen::TensorOpCost(0, 0, cost_per_unit), nullptr,
+    [&fn](Eigen::Index first, Eigen::Index last) { fn(first, last); }, mem_hint);
+
+  // threadpool_device_->parallelFor(
+  //     total, Eigen::TensorOpCost(0, 0, cost_per_unit),
+  //     [&fn](Eigen::Index first, Eigen::Index last) { fn(first, last); });
+    
+  
 }
+
+// void ThreadPool::ParallelFor(int64 total, int64 cost_per_unit,
+//                              const std::function<void(int64, int64)>& fn) {
+//   CHECK_GE(total, 0);
+//   CHECK_EQ(total, (int64)(Eigen::Index)total);
+//   threadpool_device_->parallelFor(
+//       total, Eigen::TensorOpCost(0, 0, cost_per_unit),
+//       [&fn](Eigen::Index first, Eigen::Index last) { fn(first, last); });
+  
+// }
 
 void ThreadPool::ParallelForWithWorkerId(
     int64 total, int64 cost_per_unit,

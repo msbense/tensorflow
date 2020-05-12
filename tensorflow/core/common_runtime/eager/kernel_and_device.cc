@@ -92,6 +92,12 @@ KernelAndDeviceFunc::~KernelAndDeviceFunc() {
 
 Status KernelAndDeviceOp::Init(const NodeDef& ndef,
                                GraphCollector* graph_collector) {
+      // LOG(INFO) << "Hello";
+      return Init(ndef, graph_collector, 0);
+}
+
+Status KernelAndDeviceOp::Init(const NodeDef& ndef,
+                               GraphCollector* graph_collector, int numa_aff) {
   OpKernel* k = nullptr;
   if (flr_ == nullptr) {
     return errors::Internal(
@@ -101,7 +107,8 @@ Status KernelAndDeviceOp::Init(const NodeDef& ndef,
   std::shared_ptr<const NodeProperties> props;
   TF_RETURN_IF_ERROR(NodeProperties::CreateFromNodeDef(
       ndef, flr_->GetFunctionLibraryDefinition(), &props));
-  TF_RETURN_IF_ERROR(flr_->CreateKernel(props, &k));
+  
+  TF_RETURN_IF_ERROR(flr_->CreateKernel(props, &k, numa_aff));
   kernel_.reset(k);
 
   input_alloc_attrs_.resize(kernel_->num_inputs());
@@ -201,7 +208,12 @@ Status KernelAndDeviceFunc::InstantiateFunc(const NodeDef& ndef,
 }
 
 Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
-                                 GraphCollector* graph_collector) {
+                               GraphCollector* graph_collector) {
+    return Init(ndef, graph_collector, 0);
+}
+
+Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
+                                 GraphCollector* graph_collector, int numa_aff) {
   TF_RETURN_IF_ERROR(InstantiateFunc(ndef, graph_collector));
   return pflr_->GetOutputDevices(handle_, &output_devices_);
 }
@@ -241,6 +253,7 @@ Status KernelAndDeviceOp::Run(
     ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
     std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
+  // LOG(INFO) << "Hello";
   OpKernelContext::Params params;
   params.is_eager = true;
   params.device = device_;
@@ -249,7 +262,7 @@ Status KernelAndDeviceOp::Run(
   params.op_kernel = kernel_.get();
   params.resource_manager = device_->resource_manager();
   params.input_alloc_attrs = &input_alloc_attrs_;
-  params.output_attr_array = output_alloc_attrs_.data();
+  // params.output_attr_array = output_alloc_attrs_.data();
   params.function_library = flr_;
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendez_;
@@ -279,16 +292,41 @@ Status KernelAndDeviceOp::Run(
   params.collective_executor =
       collective_executor_ ? collective_executor_->get() : nullptr;
 
+  auto input_tensor_values = inputs.GetTensorValues();//op->MutableInputs();
+  if (input_tensor_values->size() > 0) {
+    auto tensor_value = input_tensor_values->at(0);
+    int numa_affinity = port::NUMAGetMemAffinity(tensor_value->data());
+    // LOG(INFO) << numa_affinity; //0
+    // LOG(INFO) << std::to_string(port::NUMAGetThreadNodeAffinity()); //-1
+    if (numa_affinity != port::kNUMANoAffinity) {
+      AllocatorAttributes alloc_atb;
+      alloc_atb.numa_node = 1 - numa_affinity;
+      // params.output_attr_array = std::vector<AllocatorAttributes>(outputs->size(), alloc_atb);
+      for (int i = 0; i < output_alloc_attrs_.size(); i++) {
+        // output_alloc_attrs_[i].numa_node = 1 - numa_affinity;
+      }
+      if (numa_runners_ != nullptr) {
+        params.runner = &(numa_runners_->at(1 - numa_affinity));
+        // LOG(INFO) << "Here";
+      }
+    }
+  }
+
+  params.output_attr_array = output_alloc_attrs_.data();
+
   OpKernelContext context(&params);
 
+  // LOG(INFO) << "Here";
   {
     // 'AnnotatedTraceMe' will trace both scheduling time on host and execution
     // time on device of the OpKernel.
     profiler::AnnotatedTraceMe activity(
         [&] { return kernel_->TraceString(&context, /*verbose=*/false); },
         profiler::TraceMeLevel::kInfo);
+    
     device_->Compute(kernel_.get(), &context);
   }
+  // LOG(INFO) << "Here";
 
   // Clean up execution op_execution_state if deferred ops aren't running.
   if (op_execution_state != nullptr) {
@@ -310,7 +348,10 @@ Status KernelAndDeviceFunc::Run(
     ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
     std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
+  // LOG(INFO) << "Hello";
+  
   std::unique_ptr<FunctionLibraryRuntime::Options> opts = nullptr;
+  // AllocationAttributes alloc_at();
   if (remote_func_params.has_value()) {
     const EagerRemoteFunctionParams& params = remote_func_params.value();
     if (params.step_id.has_value()) {
@@ -352,11 +393,27 @@ Status KernelAndDeviceFunc::Run(
 
   opts->stats_collector = nullptr;
   opts->runner = get_runner();
+  
+  auto input_tensor_values = inputs.GetTensorValues();//op->MutableInputs();
+  if (input_tensor_values->size() > 0) {
+    auto tensor_value = input_tensor_values->at(0);
+    int numa_affinity = port::NUMAGetMemAffinity(tensor_value->data());
+    // LOG(INFO) << numa_affinity; //0
+    // LOG(INFO) << std::to_string(port::NUMAGetThreadNodeAffinity()); //-1
+    if (numa_affinity != port::kNUMANoAffinity) {
+      AllocatorAttributes alloc_atb;
+      alloc_atb.numa_node = 1 - numa_affinity;
+      opts->rets_alloc_attrs = std::vector<AllocatorAttributes>(outputs->size(), alloc_atb);
+      if (numa_runners_ != nullptr) {
+        opts->runner = &(numa_runners_->at(1 - numa_affinity));
+        // LOG(INFO) << "Here";
+      }
+    }
+  }
 
   Notification done;
   Status status;
   outputs->clear();
-
   {
     profiler::TraceMe activity(
         [&] {
