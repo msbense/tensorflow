@@ -1,0 +1,56 @@
+Results are slightly off than those collected w/ numactl
+    i.e. controlling the allocator internally, and numactl for the threads
+    vs. pure numactl these are ~3 img/sec faster
+
+Command used:
+python3 perfzero/lib/benchmark.py --git_repos="https://github.com/msbense/models.git" \
+--python_path=models \
+--data_downloads="https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz" \
+--benchmark_methods=official.benchmark.keras_cifar_benchmark.Resnet56KerasAccuracy.benchmark_cpu \
+--root_data_dir="/mydata/data/"
+
+export PYTHONPATH="$PYTHONPATH:/mydata/benchmarks/perfzero/workspace/site-packages/models"
+
+//using BasicCPUAllocator and AlignedMalloc
+~324 img/sec
+
+int node = 0;
+// don't set thread affinity
+~273
+
+
+int node = (bytes_on_node[0] < bytes_on_node[1]) ? 0 : 1;
+~290
+
+Where cores 0-7, 16-23 on numa zone 0, all others on 1
+--membind=0, --physcpubind=0-7,16-23
+~194
+
+--membind=1, --physcpubind=0-7,16-23
+~174
+
+--membind=0, physcpubind=0-15 
+~248
+
+--interleave=all, physcpubind=0-15
+~285
+
+--interleave=all
+~326
+
+Performance counter stats for 'python3 perfzero/lib/benchmark.py --git_repos=https://github.com/msbense/models.git --python_path=models --data_downloads=https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz --benchmark_methods=official.benchmark.keras_cifar_benchmark.Resnet56KerasAccuracy.benchmark_cpu --root_data_dir=/mydata/data/':
+
+11,252,790,487,872      MEM_UOPS_RETIRED.ALL_LOADS                                     (50.75%)
+ 3,249,587,062,329      mem-stores                                                    (35.60%)
+   267,077,851,232      cache-references                                              (32.78%)
+    67,782,882,328      cache-misses              #   25.379 % of all cache refs      (32.78%)
+32,450,103,326,079      cycles                                                        (40.66%)
+33,975,077,578,908      instructions              #    1.05  insn per cycle           (54.79%)
+ 2,839,681,080,598      branches                                                      (62.30%)
+         6,981,496      faults                                                      
+         2,611,364      migrations                                                  
+
+     500.503405919 seconds time elapsed
+
+~2.29GB real memory usage
+~9.27GM virtual memory usage

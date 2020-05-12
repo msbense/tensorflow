@@ -1,0 +1,18 @@
+Results are slightly off than those collected w/ numactl
+    i.e. controlling the allocator internally, and numactl for the threads
+    vs. pure numactl these are ~3 img/sec faster
+
+Command used:
+python3 tf_cnn_benchmarks.py --device=cpu --data_format=NHWC --batch_size=24 --model=alexnet
+
+//using BasicCPUAllocator and AlignedMalloc
+total images/sec: 72.84
+
+int node = 0;
+// don't set thread affinity
+total images/sec: 68.73
+
+
+int node = (bytes_on_node[0] < bytes_on_node[1]) ? 0 : 1;
+total images/sec: 70.21
+
