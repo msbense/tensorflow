@@ -3,11 +3,13 @@ Results are slightly off than those collected w/ numactl
     vs. pure numactl these are ~3 img/sec faster
 
 Command used:
-python3 perfzero/lib/benchmark.py --git_repos="https://github.com/msbense/models.git" \
---python_path=models \
---data_downloads="https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz" \
---benchmark_methods=official.benchmark.keras_cifar_benchmark.Resnet56KerasAccuracy.benchmark_cpu \
---root_data_dir="/mydata/data/"
+python3 perfzero/lib/benchmark.py 
+--git_repos=https://github.com/msbense/models.git 
+--python_path=models 
+--data_downloads=https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz 
+--gcloud_key_file_url="" 
+--benchmark_methods=official.benchmark.keras_cifar_benchmark.Resnet56KerasAccuracy.benchmark_cpu 
+--root_data_dir="mydata/data"
 
 export PYTHONPATH="$PYTHONPATH:/mydata/benchmarks/perfzero/workspace/site-packages/models"
 
