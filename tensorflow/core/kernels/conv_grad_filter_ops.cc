@@ -383,6 +383,7 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
  public:
   explicit Conv2DCustomBackpropFilterOp(OpKernelConstruction* context)
       : OpKernel(context) {
+    
     string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
@@ -429,6 +430,7 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
     const Tensor& input = context->input(0);
     const Tensor& filter_sizes = context->input(1);
     const Tensor& out_backprop = context->input(2);
+    
     OP_REQUIRES(
         context, TensorShapeUtils::IsVector(filter_sizes.shape()),
         errors::InvalidArgument(
@@ -565,13 +567,27 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
           std::min(static_cast<int>(shard_size),
                    static_cast<int>(dims.batch_size) - image_id);
 
-      auto shard = [&input_data, &col_buffer_data, &dims, &pad_top, &pad_left,
+      
+      auto shard = [&input_data, &col_buffer_data, &dims, &pad_top, &pad_left,  
                     &pad_bottom, &pad_right, &input_offset,
                     &size_A](int64 start, int64 limit) {
         for (int shard_id = start; shard_id < limit; ++shard_id) {
           const T* input_data_shard = input_data + shard_id * input_offset;
           T* col_data_shard = col_buffer_data + shard_id * size_A;
 
+          // int mem_aff1 = port::NUMAGetMemAffinity(im2col_buf);
+          int mem_aff2 = port::NUMAGetMemAffinity(input_data_shard);
+          int mem_aff3 = port::NUMAGetMemAffinity(col_data_shard);
+          // int node = (mem_aff2 + mem_aff2 + mem_aff3 > 1) ? 1 : 0;
+          int node = (mem_aff2 + mem_aff3 < 2) ? 0 : 1;
+          // bool affinity = false;
+          
+          // if (mem_aff2 == mem_aff3) {
+            // bool affinity = true;
+          // port::NUMASetPreferredThreadNodeAffinity(node);
+          // port::NUMASetThreadNodeAffinity(node);
+          // }
+          
           // When we compute the gradient with respect to the filters, we need
           // to do im2col to allow gemm-type computation.
           Im2col<T>(
@@ -580,10 +596,14 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
               dims.spatial_dims[1].filter_size, pad_top, pad_left, pad_bottom,
               pad_right, dims.spatial_dims[0].stride,
               dims.spatial_dims[1].stride, col_data_shard);
+          
+          // if (affinity) {
+          // port::NUMASetThreadNodeAffinity(port::kNUMANoAffinity);
+          // }
         }
       };
       Shard(worker_threads.num_threads, worker_threads.workers, shard_limit,
-            size_A, shard);
+            size_A, shard, col_buffer_data);
 
       ConstTensorMap A(col_buffer_data, output_image_size * shard_limit,
                        filter_total_size);

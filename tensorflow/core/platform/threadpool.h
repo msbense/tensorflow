@@ -171,7 +171,7 @@ class ThreadPool {
                    const std::function<void(int64, int64)>& fn);
 
   void ParallelFor(int64 total, int64 cost_per_unit,
-                             const std::function<void(int64, int64)>& fn, void *mem_hint);
+                             const std::function<void(int64, int64)>& fn, const void *mem_hint);
 
   // Similar to ParallelFor above, but takes the specified scheduling strategy
   // into account.

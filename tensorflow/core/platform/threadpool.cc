@@ -254,19 +254,27 @@ void ThreadPool::ParallelForNonFixedBlockSizeScheduling(
     std::function<void(Eigen::Index, Eigen::Index)> handleRange;
     handleRange = [=, &handleRange, &barrier, &f](Eigen::Index firstIdx,
                                                   Eigen::Index lastIdx) {
+      if (mem_hint != nullptr) {
+        // LOG(INFO) << std::to_string(block.size) << " " << std::to_string(lastIdx-firstIdx);
+      }
       while (lastIdx - firstIdx > block.size) {
         // Split into halves and schedule the second half on a different thread.
         const Eigen::Index midIdx = firstIdx + Eigen::divup((lastIdx - firstIdx) / 2, block.size) * block.size;
         Schedule([=, &handleRange]() { handleRange(midIdx, lastIdx); });
         lastIdx = midIdx;
       }
-      int numa_node = port::NUMAGetMemAffinity(mem_hint + firstIdx);
-      if (numa_node == 1) {
-      LOG(INFO) << std::to_string(port::NUMAGetMemAffinity(mem_hint)) << " " << std::to_string(numa_node);
+      if (block.size > 10 && mem_hint != nullptr) {
+        // LOG(INFO) << "Here"; 
+        // int numa_node = port::NUMAGetMemAffinity(mem_hint + firstIdx);
+        // int mem_hint_node = port::NUMAGetMemAffinity(mem_hint);
+        // int last_idx_node = port::NUMAGetMemAffinity(mem_hint+lastIdx);
+        // if (numa_node != mem_hint_node || numa_node != last_idx_node) {
+          // LOG(INFO) << std::to_string(mem_hint_node) << " " << std::to_string(numa_node) << " " << std::to_string(last_idx_node) << " " << std::to_string(block.size);
+        // }
+        // int numa_node = std::rand() % 2;
+        // if (numa_node != port::kNUMANoAffinity)
+          // port::NUMASetThreadNodeAffinity(numa_node);
       }
-      // int numa_node = std::rand() % 2;
-      if (numa_node != port::kNUMANoAffinity)
-        port::NUMASetThreadNodeAffinity(numa_node);
       // Single block or less, execute directly.
       f(firstIdx, lastIdx);
       barrier.DecrementCount();
@@ -331,7 +339,7 @@ void ThreadPool::ParallelFor(int64 total, int64 cost_per_unit,
 }
 
 void ThreadPool::ParallelFor(int64 total, int64 cost_per_unit,
-                             const std::function<void(int64, int64)>& fn, void *mem_hint) {
+                             const std::function<void(int64, int64)>& fn, const void *mem_hint) {
   CHECK_GE(total, 0);
   CHECK_EQ(total, (int64)(Eigen::Index)total);
 

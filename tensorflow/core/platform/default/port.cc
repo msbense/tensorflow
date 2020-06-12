@@ -182,16 +182,52 @@ int NUMANumNodes() {
 #endif  // TENSORFLOW_USE_NUMA
 }
 
+void NUMASetPreferredThreadNodeAffinity(int node) {
+#ifdef TENSORFLOW_USE_NUMA
+  if (HaveHWLocTopology()) {
+    int ret = 0;
+    if (node == port::kNUMANoAffinity) { //then bind this thread to all nodes
+      hwloc_const_cpuset_t obj = hwloc_topology_get_complete_cpuset(hwloc_topology_handle);
+      ret = hwloc_set_cpubind(hwloc_topology_handle, obj,
+                      HWLOC_CPUBIND_THREAD);
+    }
+    else { // Find the corresponding NUMA node topology object.
+      hwloc_obj_t obj = GetHWLocTypeIndex(HWLOC_OBJ_NUMANODE, node);
+      if (obj) {
+        ret = hwloc_set_cpubind(hwloc_topology_handle, obj->cpuset,
+                          HWLOC_CPUBIND_THREAD);
+      } else {
+        LOG(ERROR) << "Could not find hwloc NUMA node " << node;
+      }
+    }
+    if (ret == -1) {
+      LOG(ERROR) << "Error when changing thread binding, errno = " << std::to_string(errno);
+    }
+  }
+#endif  // TENSORFLOW_USE_NUMA
+}
+
+//-1 == all nodes
 void NUMASetThreadNodeAffinity(int node) {
 #ifdef TENSORFLOW_USE_NUMA
   if (HaveHWLocTopology()) {
-    // Find the corresponding NUMA node topology object.
-    hwloc_obj_t obj = GetHWLocTypeIndex(HWLOC_OBJ_NUMANODE, node);
-    if (obj) {
-      int ret = hwloc_set_cpubind(hwloc_topology_handle, obj->cpuset,
-                        HWLOC_CPUBIND_THREAD | HWLOC_CPUBIND_STRICT);
-    } else {
-      LOG(ERROR) << "Could not find hwloc NUMA node " << node;
+    int ret = 0;
+    if (node == port::kNUMANoAffinity) { //then bind this thread to all nodes
+      hwloc_const_cpuset_t obj = hwloc_topology_get_complete_cpuset(hwloc_topology_handle);
+      ret = hwloc_set_cpubind(hwloc_topology_handle, obj,
+                      HWLOC_CPUBIND_THREAD | HWLOC_CPUBIND_STRICT);
+    }
+    else { // Find the corresponding NUMA node topology object.
+      hwloc_obj_t obj = GetHWLocTypeIndex(HWLOC_OBJ_NUMANODE, node);
+      if (obj) {
+        ret = hwloc_set_cpubind(hwloc_topology_handle, obj->cpuset,
+                          HWLOC_CPUBIND_THREAD | HWLOC_CPUBIND_STRICT);
+      } else {
+        LOG(ERROR) << "Could not find hwloc NUMA node " << node;
+      }
+    }
+    if (ret == -1) {
+      LOG(ERROR) << "Error when changing thread binding, errno = " << std::to_string(errno);
     }
   }
 #endif  // TENSORFLOW_USE_NUMA
@@ -269,14 +305,9 @@ void Free(void* ptr) { free(ptr); }
 // const struct hwloc_bitmap_s;
 void *NUMAInterleaveMalloc(size_t size, int minimum_alignment) {
   void *ptr = AlignedMalloc(size, minimum_alignment);
+  // LOG(INFO) << "Hello";
   #ifdef TENSORFLOW_USE_NUMA
     if (HaveHWLocTopology()) {
-      // hwloc_const_bitmap_t cset = hwloc_topology_get_topology_nodeset(hwloc_topology_handle);
-      // // LOG(INFO) << hwloc_bitmap_weight(cset);
-      // void *ptr = hwloc_alloc_membind(hwloc_topology_handle, size, 
-                                              // cset, HWLOC_MEMBIND_NEXTTOUCH, 
-                                              // 0);
-      // return ptr;
       int num_numa_nodes = NUMANumNodes();
       size_t chunk_size = size / num_numa_nodes;
       for (int n = 0; n < num_numa_nodes; n++) {
@@ -284,17 +315,11 @@ void *NUMAInterleaveMalloc(size_t size, int minimum_alignment) {
         if (numa_node) {
           void *chunk_ptr = ptr + (n * chunk_size);
           int err = hwloc_set_area_membind_nodeset(hwloc_topology_handle, chunk_ptr, chunk_size, 
-                                  numa_node->nodeset, HWLOC_MEMBIND_BIND, HWLOC_MEMBIND_BYNODESET | HWLOC_MEMBIND_STRICT);
-          // LOG(INFO) << std::to_string(err);
+                                  numa_node->nodeset, HWLOC_MEMBIND_BIND, HWLOC_MEMBIND_BYNODESET | HWLOC_MEMBIND_STRICT | HWLOC_MEMBIND_MIGRATE);
         }
         else {
-          LOG(ERROR) << "Failed to allocate to node ";
+          LOG(ERROR) << "Failed to bind to node " << n;
         }
-      }
-      int tag = std::rand() % 1000;
-      for (int n = 0; n < num_numa_nodes; n++) {
-        void *chunk_ptr = ptr + (n * chunk_size);
-        // LOG(INFO) << tag << " " << ptr << " " << std::to_string(n) << ": " << NUMAGetMemAffinity(chunk_ptr);
       }
     }
     

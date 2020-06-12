@@ -666,6 +666,7 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     const size_t work_unit_size = size_A + size_B + size_C;
 
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
+    // (context->device()->tensorflow_cpu_worker_threads())
     // context->device()->tensorflow_device_thread_pool();
     // context->device()->tensor
 
@@ -749,24 +750,37 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
 
         input_backprop_data += input_offset;
       }
-    } else {
+    } else {  
+      
       for (int image_id = 0; image_id < dims.batch_size;
            image_id += shard_size) {
         const int shard_limit =
             std::min(static_cast<int>(shard_size),
                      static_cast<int>(dims.batch_size) - image_id);
-
+        std::atomic<int> n (0);
         auto shard = [&context, &dims, &pad_top, &pad_left, &pad_bottom,
                       &pad_right, &output_image_size, &filter_total_size,
                       &input_backprop_data, &col_buffer_data,
                       &out_backprop_data, &filter_data, &input_offset,
-                      &output_offset, &size_C](int64 start, int64 limit) {
+                      &output_offset, &size_C, &n] (int64 start, int64 limit) {
+          
           for (int shard_id = start; shard_id < limit; ++shard_id) {
-            
             T* im2col_buf = col_buffer_data + shard_id * size_C;
             T* input_data = input_backprop_data + shard_id * input_offset;
             const T* out_data = out_backprop_data + shard_id * output_offset;
-
+            int mem_aff1 = port::NUMAGetMemAffinity(im2col_buf);
+            int mem_aff2 = port::NUMAGetMemAffinity(input_data);
+            int mem_aff3 = port::NUMAGetMemAffinity(out_data);
+            int node = (mem_aff1 + mem_aff2 + mem_aff3 > 1) ? 1 : 0;
+            // bool affinity = false;
+            // if (mem_aff1 == mem_aff2 && mem_aff2 == mem_aff3) {
+              // affinity = true;
+            // port::NUMASetPreferredThreadNodeAffinity(node);
+            // port::NUMASetThreadNodeAffinity(node);
+            // }
+            // LOG(INFO) << std::to_string(node);
+            // LOG(INFO) << std::to_string(start) << " " << std::to_string(limit) << " " << std::to_string(input_offset) << " " << std::to_string(output_offset);
+            // LOG(INFO) << std::to_string(tag) << " " << std::to_string(mem_aff1) <<  " " << std::to_string(mem_aff2) << " " << std::to_string(mem_aff3);
             Conv2DCustomBackpropInputMatMulFunctor<T>()(
                 context, out_data, filter_data, filter_total_size,
                 output_image_size, dims.out_depth, im2col_buf);
@@ -778,17 +792,22 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
                       dims.spatial_dims[1].filter_size, pad_top, pad_left,
                       pad_bottom, pad_right, dims.spatial_dims[0].stride,
                       dims.spatial_dims[1].stride, input_data);
+            // if (affinity) {
+            // port::NUMASetThreadNodeAffinity(port::kNUMANoAffinity);
+            // }
           }
+          
         };
-        // LOG(INFO) << "col_buffer_data " << (void*)col_buffer_data;
-        // LOG(INFO) << "input_backprop_data " << (void*)input_backprop_data;
-        // LOG(INFO) << "out_backprop_data " << (void*)out_backprop_data;
+        int tag = std::rand() % 1000;
+        LOG(INFO) << "Shard started " << tag;// << n;
         Shard(worker_threads.num_threads, worker_threads.workers, shard_limit,
-              work_unit_size, shard, out_backprop_data);
-
+              work_unit_size, shard, col_buffer_data);
+        LOG(INFO) << "Shard finished " << tag;// << n;
+        // std::this_thread::sleep_for(std::chrono::seconds(2));
         input_backprop_data += input_offset * shard_limit;
         out_backprop_data += output_offset * shard_limit;
       }
+      // LOG(INFO) << std::to_string(num_n0) << " " << std::to_string(num_n1);
       // LOG(INFO) << "Done...";
     }
   }

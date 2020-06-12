@@ -299,11 +299,11 @@ Status KernelAndDeviceOp::Run(
     // LOG(INFO) << numa_affinity; //0
     // LOG(INFO) << std::to_string(port::NUMAGetThreadNodeAffinity()); //-1
     if (numa_affinity != port::kNUMANoAffinity) {
-      AllocatorAttributes alloc_atb;
-      alloc_atb.numa_node = 1 - numa_affinity;
+      // AllocatorAttributes alloc_atb;
+      // alloc_atb.numa_node = 1 - numa_affinity;
       // params.output_attr_array = std::vector<AllocatorAttributes>(outputs->size(), alloc_atb);
       for (int i = 0; i < output_alloc_attrs_.size(); i++) {
-        // output_alloc_attrs_[i].numa_node = 1 - numa_affinity;
+        output_alloc_attrs_[i].numa_node = 1 - numa_affinity;
       }
       if (numa_runners_ != nullptr) {
         params.runner = &(numa_runners_->at(1 - numa_affinity));

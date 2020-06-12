@@ -50,7 +50,7 @@ void Shard(int max_parallelism, thread::ThreadPool* workers, int64 total,
   }
   if (max_parallelism >= workers->NumThreads()) {
     // LOG(INFO) << "workers->ParallelFor";
-    workers->ParallelFor(total, cost_per_unit, work);
+    workers->ParallelFor(total, cost_per_unit, work, mem_hint);
     return;
   }
   // LOG(INFO) << "Sharder::Do";

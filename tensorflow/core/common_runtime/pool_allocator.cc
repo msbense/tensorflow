@@ -267,20 +267,14 @@ void* BasicCPUAllocator::Alloc(size_t alignment, size_t num_bytes) {
     LOG(INFO) << biggest_alloc << " " << std::to_string(numa_node_);
   }
   if (num_bytes >= 150000) {
-      return port::NUMAInterleaveMalloc(num_bytes, static_cast<int>(alignment));
+    // return port::NUMAMalloc(0, num_bytes, static_cast<int>(alignment));
+      // return port::NUMAInterleaveMalloc(num_bytes, static_cast<int>(alignment));
   }
   if (num_bytes > 0) {
     if (numa_node_ == port::kNUMANoAffinity) {
-      // LOG(INFO) << "Hello";
       ptr = port::AlignedMalloc(num_bytes, static_cast<int>(alignment));
     } else {
-      // LOG(INFO) << "Hello " << numa_node_;
-      // if (numa_node_ == 1) LOG(INFO) << "It's one"; 
-      // int numa_aff = port::NUMAGetThreadNodeAffinity() << " " << numa_node_;
-      // LOG(INFO) << "Thread " << port::NUMAGetThreadNodeAffinity() << " allocating to " << numa_node_;
-      ptr =
-          // port::NUMAMalloc((numa_aff != port::kNUMANoAffinity) ? numa_aff : (std::rand() % 2), num_bytes, static_cast<int>(alignment));
-          port::NUMAMalloc(numa_node_, num_bytes, static_cast<int>(alignment));
+      ptr = port::NUMAMalloc(numa_node_, num_bytes, static_cast<int>(alignment));
     }
     VisitAlloc(ptr, numa_node_, num_bytes);
   }

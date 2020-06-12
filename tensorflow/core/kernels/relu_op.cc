@@ -205,6 +205,7 @@ class ReluOp<Device, qint8>
                     "Tensor size must be a multiple of 4 for Relu<qint8>. Got ",
                     flat_input.size()));
     functor::Relu<Device, qint8> func;
+    // port::NUMASetThreadAffinity();
     func(context->eigen_device<Device>(), flat_input, output->flat<qint8>());
   }
 };
